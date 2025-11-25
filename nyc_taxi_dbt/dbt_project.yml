@@ -1,0 +1,36 @@
+name: 'nyc_taxi_dbt'
+version: '1.0.0'
+config-version: 2
+
+profile: 'nyc_taxi'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+vars:
+  start_date: '2013-01-01'
+  incremental_lookback_days: 3
+
+models:
+  nyc_taxi_dbt:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      core:
+        +materialized: table
+        +schema: marts
+      aggregations:
+        +materialized: incremental
+        +schema: marts
+      insights:
+        +materialized: table
+        +schema: marts
+      ml_features:
+        +materialized: incremental
+        +schema: ml

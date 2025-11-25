@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: insight_covid_recovery
+    description: COVID-19 impact and recovery analysis
+  - name: insight_industry_evolution
+    description: "Death and Rebirth of NYC Yellow Taxi" story
+  - name: insight_congestion_pricing_impact
+    description: Congestion pricing fee impact analysis

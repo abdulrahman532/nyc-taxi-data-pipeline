@@ -1,0 +1,13 @@
+version: 2
+
+models:
+  - name: dim_zones
+    description: Zone dimension table
+  - name: dim_vendors
+    description: Vendor dimension table
+  - name: dim_payment_types
+    description: Payment types dimension table
+  - name: dim_rate_codes
+    description: Rate codes dimension table
+  - name: fct_trips
+    description: Fact table with all trip data

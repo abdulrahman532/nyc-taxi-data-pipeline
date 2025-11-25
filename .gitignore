@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+target/
+dbt_packages/
+logs/
+.idea/
+.vscode/
+.env
+*.pem
+*.zip
+build_package/
+.DS_Store

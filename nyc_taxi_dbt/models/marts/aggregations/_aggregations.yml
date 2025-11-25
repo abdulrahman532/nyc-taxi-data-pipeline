@@ -1,0 +1,7 @@
+version: 2
+
+models:
+  - name: agg_monthly_overview
+    description: Monthly aggregated metrics
+  - name: agg_monthly_by_borough
+    description: Monthly metrics by borough
