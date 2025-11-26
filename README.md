@@ -10,14 +10,14 @@ A production-ready **ELT data pipeline** for NYC Yellow Taxi trip data, featurin
 
 ## 📋 Table of Contents
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Data Models](#data-models)
-- [Setup & Installation](#setup--installation)
-- [Usage](#usage)
-- [Data Quality](#data-quality)
-- [Contributing](#contributing)
+- [🎯 Overview](#-overview)
+- [🏗️ Architecture](#️-architecture)
+- [📁 Project Structure](#-project-structure)
+- [📊 Data Models](#-data-models)
+- [🚀 Setup & Installation](#-setup--installation)
+- [💻 Usage](#-usage)
+- [✅ Data Quality](#-data-quality)
+- [🤝 Contributing](#-contributing)
 
 ## 🎯 Overview
 
