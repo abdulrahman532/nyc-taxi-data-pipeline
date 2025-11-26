@@ -1,0 +1,78 @@
+version: 2
+
+models:
+  - name: stg_trips
+    description: "Staged taxi trips with raw timestamps"
+    columns:
+      - name: trip_id
+        description: "Surrogate key - NOT unique due to identical trip attributes (~133K duplicates)"
+        tests:
+          - not_null
+
+      - name: vendor_id
+        description: "TPEP provider (1=CMT, 2=Curb, 6=Myle, 7=Helix)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 6, 7]
+              config:
+                severity: warn
+
+      - name: payment_type_id
+        description: "Payment method (0=Flex, 1=Credit, 2=Cash, 3=No charge, 4=Dispute, 5=Unknown, 6=Voided)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1, 2, 3, 4, 5, 6]
+              config:
+                severity: warn
+
+      - name: passenger_count
+        description: "Number of passengers (typically 1-6, but data has anomalies)"
+        tests:
+          - in_range:
+              min_value: 0
+              max_value: 7
+              config:
+                severity: warn
+
+      - name: trip_distance
+        description: "Trip distance in miles"
+        tests:
+          - positive_value:
+              config:
+                severity: warn
+
+      - name: fare_amount
+        description: "Base fare amount (can be negative for refunds)"
+        tests:
+          - not_null
+
+      - name: pickup_datetime_raw
+        description: "Raw pickup timestamp (microseconds)"
+        tests:
+          - not_null
+
+      - name: dropoff_datetime_raw
+        description: "Raw dropoff timestamp (microseconds)"
+        tests:
+          - not_null
+
+  - name: stg_zones
+    description: "NYC taxi zones lookup (265 zones)"
+    columns:
+      - name: location_id
+        description: "Unique zone ID (1-265)"
+        tests:
+          - unique
+          - not_null
+
+      - name: zone_name
+        description: "Zone name"
+        tests:
+          - not_null
+
+      - name: borough
+        description: "NYC borough name"
+        tests:
+          - not_null

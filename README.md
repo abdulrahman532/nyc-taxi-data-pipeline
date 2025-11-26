@@ -80,31 +80,27 @@ nyc-taxi-data-pipeline/
 │   ├── models/
 │   │   ├── staging/                      # Raw data cleaning
 │   │   │   ├── stg_trips.sql
-│   │   │   └── stg_zones.sql
-│   │   ├── intermediate/                 # Data validation & enrichment
-│   │   │   └── int_trips_validated.sql
+│   │   │   └── stg_taxi_zones.sql
+│   │   ├── intermediate/                 # Business logic
+│   │   │   ├── int_trips_cleaned.sql
+│   │   │   └── int_trips_enriched.sql
 │   │   └── marts/
 │   │       ├── core/                     # Dimensional models
 │   │       │   ├── fct_trips.sql
 │   │       │   ├── dim_zones.sql
+│   │       │   ├── dim_vendors.sql
 │   │       │   ├── dim_payment_types.sql
 │   │       │   └── dim_rate_codes.sql
 │   │       ├── aggregations/             # Pre-aggregated metrics
-│   │       │   ├── agg_monthly.sql
-│   │       │   ├── agg_quarterly.sql
-│   │       │   └── agg_yearly.sql
-│   │       └── insights/                 # Business analytics (11 models)
-│   │           ├── insight_covid_recovery.sql
-│   │           ├── insight_uber_effect.sql
-│   │           ├── insight_industry_evolution.sql
-│   │           ├── insight_airport_lifeline.sql
-│   │           ├── insight_fee_impact.sql
-│   │           ├── insight_manhattan_share.sql
-│   │           ├── insight_payment_shift.sql
-│   │           ├── insight_route_pricing.sql
-│   │           ├── insight_tipping_patterns.sql
-│   │           ├── insight_anomaly_breakdown.sql
-│   │           └── insight_zone_heatmap.sql
+│   │       │   ├── agg_monthly_overview.sql
+│   │       │   └── agg_monthly_by_borough.sql
+│   │       ├── insights/                 # Business analytics
+│   │       │   ├── insight_covid_recovery.sql
+│   │       │   ├── insight_congestion_pricing_impact.sql
+│   │       │   └── insight_industry_evolution.sql
+│   │       └── ml_features/              # ML feature store
+│   │           ├── ml_trip_features.sql
+│   │           └── ml_customer_segments.sql
 ├── scripts/
 │   └── download_zone_lookup.py           # Zone data download
 ├── snowflake/
@@ -114,50 +110,47 @@ nyc-taxi-data-pipeline/
 
 ## 📊 Data Models
 
-> **Dataset Stats:** 1.1 billion trips | 2013-01-01 to 2025-09-30 | 21 dbt models
-
 ### Staging Layer
 | Model | Description |
 |-------|-------------|
-| `stg_trips` | Raw trip records with timestamp conversion (microseconds → datetime) |
-| `stg_zones` | NYC taxi zone reference data (265 zones) |
+| `stg_trips` | Cleaned raw trip records with standardized column names |
+| `stg_taxi_zones` | NYC taxi zone reference data |
 
 ### Intermediate Layer
 | Model | Description |
 |-------|-------------|
-| `int_trips_validated` | Validated trips with data quality filters, calculated fields (duration, speed, time of day) |
+| `int_trips_cleaned` | Filtered trips with data quality rules applied |
+| `int_trips_enriched` | Trips enriched with zone and temporal attributes |
 
 ### Marts Layer
 
 #### Core (Dimensional Model)
 | Model | Type | Description |
 |-------|------|-------------|
-| `fct_trips` | Fact | Core trip transactions with all metrics and dimensions |
-| `dim_zones` | Dimension | Pickup/dropoff location with borough info |
-| `dim_payment_types` | Dimension | Payment method lookup (Cash, Credit, etc.) |
-| `dim_rate_codes` | Dimension | Rate code descriptions (Standard, JFK, Newark, etc.) |
+| `fct_trips` | Fact | Core trip transactions with metrics |
+| `dim_zones` | Dimension | Pickup/dropoff location attributes |
+| `dim_vendors` | Dimension | Taxi vendor information |
+| `dim_payment_types` | Dimension | Payment method lookup |
+| `dim_rate_codes` | Dimension | Rate code descriptions |
 
 #### Aggregations
 | Model | Description |
 |-------|-------------|
-| `agg_monthly` | Monthly KPIs: trips, revenue, avg fare, avg distance |
-| `agg_quarterly` | Quarterly aggregations with YoY comparisons |
-| `agg_yearly` | Yearly summary metrics |
+| `agg_monthly_overview` | Monthly KPIs: trips, revenue, avg fare |
+| `agg_monthly_by_borough` | Borough-level monthly metrics |
 
-#### Insights (11 Analytics Models)
+#### Insights
 | Model | Description |
 |-------|-------------|
-| `insight_covid_recovery` | COVID-19 impact and recovery analysis (2019-2023) |
-| `insight_uber_effect` | Uber/rideshare disruption impact on yellow taxi industry |
+| `insight_covid_recovery` | COVID-19 impact and recovery analysis |
+| `insight_congestion_pricing_impact` | Manhattan congestion pricing effects |
 | `insight_industry_evolution` | Long-term industry trends (2013-present) |
-| `insight_airport_lifeline` | Airport trips analysis (JFK, LaGuardia, Newark) |
-| `insight_fee_impact` | Congestion surcharge and fee impact analysis |
-| `insight_manhattan_share` | Manhattan vs outer borough trip distribution |
-| `insight_payment_shift` | Cash to credit card payment transition |
-| `insight_route_pricing` | Popular routes and pricing patterns |
-| `insight_tipping_patterns` | Tipping behavior analysis by time, location, payment |
-| `insight_anomaly_breakdown` | Data quality anomalies and outliers |
-| `insight_zone_heatmap` | Zone-level pickup/dropoff heatmap data |
+
+#### ML Features
+| Model | Description |
+|-------|-------------|
+| `ml_trip_features` | Feature vectors for trip prediction models |
+| `ml_customer_segments` | Customer segmentation features |
 
 ## 🚀 Setup & Installation
 
@@ -272,32 +265,21 @@ The pipeline includes comprehensive data quality checks:
 
 ### Monthly Revenue Trend
 ```sql
-SELECT * FROM NYC_TAXI_DB.RAW_marts.agg_monthly
-ORDER BY pickup_year, pickup_month;
+SELECT * FROM NYC_TAXI_DB.MARTS.AGG_MONTHLY_OVERVIEW
+ORDER BY year, month;
 ```
 
 ### Top Pickup Locations
 ```sql
 SELECT 
-    pickup_location_id,
+    pickup_zone,
+    pickup_borough,
     COUNT(*) as trip_count,
     SUM(total_amount) as total_revenue
-FROM NYC_TAXI_DB.RAW_marts.fct_trips
-GROUP BY 1
+FROM NYC_TAXI_DB.MARTS.FCT_TRIPS
+GROUP BY 1, 2
 ORDER BY trip_count DESC
 LIMIT 10;
-```
-
-### Uber Effect Analysis
-```sql
-SELECT * FROM NYC_TAXI_DB.RAW_insights.insight_uber_effect
-ORDER BY pickup_year;
-```
-
-### COVID Recovery
-```sql
-SELECT * FROM NYC_TAXI_DB.RAW_insights.insight_covid_recovery
-ORDER BY pickup_year, pickup_month;
 ```
 
 ## 🤝 Contributing
