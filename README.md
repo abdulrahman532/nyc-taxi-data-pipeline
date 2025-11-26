@@ -41,9 +41,8 @@ This project implements a complete **batch + real-time** data pipeline that:
 ✅ **Fraud detection system with 15+ detection rules**  
 ✅ **Live dashboard with Streamlit for real-time monitoring**  
 ✅ Data quality tests and validation  
-✅ Dimensional modeling with fact and dimension tables  
 ✅ One Big Table (OBT) for simplified analytics  
-✅ 11 pre-built business insights  
+✅ 11 pre-built business insights ready for visualization  
 ✅ Infrastructure as Code with AWS Lambda  
 
 ## 🏗️ Architecture
@@ -108,29 +107,26 @@ nyc-taxi-data-pipeline/
 │   │   │   └── int_trips_validated.sql
 │   │   └── marts/
 │   │       ├── core/
-│   │       │   ├── fct_trips.sql
 │   │       │   ├── obt_trips.sql
 │   │       │   ├── dim_zones.sql
-│   │       │   ├── dim_vendors.sql
 │   │       │   ├── dim_payment_types.sql
-│   │       │   ├── dim_rate_codes.sql
-│   │       │   └── dim_date.sql
+│   │       │   └── dim_rate_codes.sql
 │   │       ├── aggregations/
 │   │       │   ├── agg_monthly.sql
 │   │       │   ├── agg_quarterly.sql
 │   │       │   └── agg_yearly.sql
 │   │       └── insights/
-│   │           ├── insight_covid_recovery.sql
-│   │           ├── insight_industry_evolution.sql
 │   │           ├── insight_uber_effect.sql
-│   │           ├── insight_payment_shift.sql
-│   │           ├── insight_tipping_patterns.sql
+│   │           ├── insight_covid_recovery.sql
 │   │           ├── insight_airport_lifeline.sql
+│   │           ├── insight_payment_shift.sql
 │   │           ├── insight_manhattan_share.sql
-│   │           ├── insight_fee_impact.sql
+│   │           ├── insight_tipping_patterns.sql
 │   │           ├── insight_route_pricing.sql
+│   │           ├── insight_fee_impact.sql
 │   │           ├── insight_zone_heatmap.sql
-│   │           └── insight_anomaly_breakdown.sql
+│   │           ├── insight_anomaly_breakdown.sql
+│   │           └── insight_industry_evolution.sql
 │   └── tests/
 │       ├── assert_pickup_before_dropoff.sql
 │       ├── assert_positive_fares.sql
@@ -167,29 +163,64 @@ nyc-taxi-data-pipeline/
 
 ## 📊 Data Models
 
-### Staging Layer
+### Snowflake Database Structure
+\`\`\`
+NYC_TAXI_DB
+│
+├── RAW_staging (Views)
+│   ├── stg_trips
+│   └── stg_zones
+│
+├── RAW_intermediate (Views)
+│   └── int_trips_validated
+│
+├── RAW_marts (Tables)
+│   ├── dim_zones              ← Dimension
+│   ├── dim_payment_types      ← Dimension
+│   ├── dim_rate_codes         ← Dimension
+│   ├── obt_trips              ← One Big Table (Denormalized)
+│   ├── agg_monthly            ← Aggregated
+│   ├── agg_quarterly          ← Aggregated
+│   └── agg_yearly             ← Aggregated
+│
+└── RAW_insights (Tables - Ready for Visualization)
+    ├── insight_uber_effect
+    ├── insight_covid_recovery
+    ├── insight_airport_lifeline
+    ├── insight_payment_shift
+    ├── insight_manhattan_share
+    ├── insight_tipping_patterns
+    ├── insight_route_pricing
+    ├── insight_fee_impact
+    ├── insight_zone_heatmap
+    ├── insight_anomaly_breakdown
+    └── insight_industry_evolution
+\`\`\`
+
+### Staging Layer (Views)
 | Model | Description |
 |-------|-------------|
 | \`stg_trips\` | Cleaned raw trip records with standardized column names |
 | \`stg_zones\` | NYC taxi zone reference data |
 
-### Intermediate Layer
+### Intermediate Layer (Views)
 | Model | Description |
 |-------|-------------|
 | \`int_trips_validated\` | Trips with data quality validation and filtering |
 
-### Marts Layer
+### Marts Layer (Tables)
 
-#### Core (Dimensional Model)
-| Model | Type | Description |
-|-------|------|-------------|
-| \`fct_trips\` | Fact | Core trip transactions with all metrics |
-| \`obt_trips\` | OBT | One Big Table - denormalized for easy analytics |
-| \`dim_zones\` | Dimension | Pickup/dropoff location attributes |
-| \`dim_vendors\` | Dimension | Taxi vendor information |
-| \`dim_payment_types\` | Dimension | Payment method lookup |
-| \`dim_rate_codes\` | Dimension | Rate code descriptions |
-| \`dim_date\` | Dimension | Date dimension for time-based analysis |
+#### Dimensions
+| Model | Description |
+|-------|-------------|
+| \`dim_zones\` | Pickup/dropoff location attributes |
+| \`dim_payment_types\` | Payment method lookup |
+| \`dim_rate_codes\` | Rate code descriptions |
+
+#### One Big Table
+| Model | Description |
+|-------|-------------|
+| \`obt_trips\` | Denormalized table with all trip data for easy analytics |
 
 #### Aggregations
 | Model | Description |
@@ -198,20 +229,20 @@ nyc-taxi-data-pipeline/
 | \`agg_quarterly\` | Quarterly performance metrics |
 | \`agg_yearly\` | Yearly trends and YoY comparisons |
 
-#### Insights (11 Business Analytics)
+### Insights Layer (Tables - Ready for Visualization)
 | Model | Description |
 |-------|-------------|
-| \`insight_covid_recovery\` | COVID-19 impact and recovery analysis |
-| \`insight_industry_evolution\` | Long-term industry trends (2009-present) |
 | \`insight_uber_effect\` | Impact of rideshare competition |
-| \`insight_payment_shift\` | Cash to card payment transition |
-| \`insight_tipping_patterns\` | Tipping behavior analysis |
+| \`insight_covid_recovery\` | COVID-19 impact and recovery analysis |
 | \`insight_airport_lifeline\` | Airport trip importance analysis |
+| \`insight_payment_shift\` | Cash to card payment transition |
 | \`insight_manhattan_share\` | Manhattan vs outer borough trends |
-| \`insight_fee_impact\` | Congestion surcharge and fee analysis |
+| \`insight_tipping_patterns\` | Tipping behavior analysis |
 | \`insight_route_pricing\` | Popular route pricing patterns |
+| \`insight_fee_impact\` | Congestion surcharge and fee analysis |
 | \`insight_zone_heatmap\` | Pickup/dropoff zone activity |
 | \`insight_anomaly_breakdown\` | Data quality anomaly detection |
+| \`insight_industry_evolution\` | Long-term industry trends (2009-present) |
 
 ## 📡 Real-Time Streaming
 
