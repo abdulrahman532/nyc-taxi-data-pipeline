@@ -5,19 +5,14 @@ with source as (
 )
 
 select
-    {{ dbt_utils. generate_surrogate_key(['tpep_pickup_datetime', 'vendorid', 'pulocationid', 'dolocationid', 'fare_amount', 'trip_distance']) }} as trip_id,
+    {{ dbt_utils.generate_surrogate_key(['tpep_pickup_datetime', 'vendorid', 'pulocationid', 'dolocationid', 'fare_amount', 'trip_distance']) }} as trip_id,
     vendorid as vendor_id,
     pulocationid as pickup_location_id,
     dolocationid as dropoff_location_id,
     ratecodeid as rate_code_id,
     payment_type as payment_type_id,
-    
-    -- Fix: Convert pickup from corrupted timestamp
-    to_timestamp(DATE_PART(epoch_second, tpep_pickup_datetime) / 1000000) as pickup_datetime,
-    
-    -- Fix: Convert dropoff from microseconds
-    to_timestamp(tpep_dropoff_datetime / 1000000) as dropoff_datetime,
-    
+    case when tpep_pickup_datetime > 1000000000000 then to_timestamp(tpep_pickup_datetime / 1000000) else tpep_pickup_datetime end as pickup_datetime,
+    case when tpep_dropoff_datetime > 1000000000000 then to_timestamp(tpep_dropoff_datetime / 1000000) else to_timestamp(tpep_dropoff_datetime) end as dropoff_datetime,
     passenger_count,
     trip_distance,
     store_and_fwd_flag,
@@ -31,6 +26,5 @@ select
     congestion_surcharge,
     coalesce(airport_fee, 0) as airport_fee,
     coalesce(cbd_congestion_fee, 0) as cbd_congestion_fee
-    
 from source
 where tpep_pickup_datetime is not null

@@ -8,10 +8,10 @@ dropoff_stats as (
     select dropoff_location_id as location_id, count(*) as dropoff_count from {{ ref('fct_trips') }} group by 1
 )
 select
-    z.location_id, z.borough, z.zone_name, z.zone_category, z. is_airport,
+    z.location_id, z.borough, z.zone_name, z.zone_category, z.is_airport,
     coalesce(p.pickup_count, 0) as total_pickups,
-    coalesce(p. pickup_revenue, 0) as pickup_revenue,
-    round(coalesce(p. avg_fare, 0), 2) as avg_pickup_fare,
+    coalesce(p.pickup_revenue, 0) as pickup_revenue,
+    round(coalesce(p.avg_fare, 0), 2) as avg_pickup_fare,
     round(coalesce(p.avg_tip_pct, 0), 2) as avg_tip_pct,
     coalesce(d.dropoff_count, 0) as total_dropoffs,
     coalesce(p.pickup_count, 0) + coalesce(d.dropoff_count, 0) as total_activity,
@@ -21,4 +21,4 @@ select
 from {{ ref('dim_zones') }} z
 left join pickup_stats p on z.location_id = p.location_id
 left join dropoff_stats d on z.location_id = d.location_id
-order by total_pickups desc sql
+order by total_pickups desc

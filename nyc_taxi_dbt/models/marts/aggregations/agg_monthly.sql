@@ -1,7 +1,9 @@
 {{ config(materialized='table') }}
 
 select
-    pickup_month, pickup_year, pickup_month_num,
+    pickup_month,
+    pickup_year,
+    pickup_month_num,
     count(*) as total_trips,
     count(distinct pickup_date) as active_days,
     sum(passenger_count) as total_passengers,
@@ -20,8 +22,8 @@ select
     round(avg(tip_percentage), 2) as avg_tip_pct,
     sum(case when payment_type_id = 1 then 1 else 0 end) as credit_card_trips,
     sum(case when payment_type_id = 2 then 1 else 0 end) as cash_trips,
-    round(sum(case when payment_type_id = 1 then 1 else 0 end) * 100. 0 / count(*), 2) as credit_card_pct,
-    round(sum(case when payment_type_id = 2 then 1 else 0 end) * 100. 0 / count(*), 2) as cash_pct,
+    round(sum(case when payment_type_id = 1 then 1 else 0 end) * 100.0 / count(*), 2) as credit_card_pct,
+    round(sum(case when payment_type_id = 2 then 1 else 0 end) * 100.0 / count(*), 2) as cash_pct,
     sum(case when is_airport_trip then 1 else 0 end) as airport_trips,
     round(sum(case when is_airport_trip then 1 else 0 end) * 100.0 / count(*), 2) as airport_trip_pct,
     sum(case when pickup_borough = 'Manhattan' then 1 else 0 end) as manhattan_pickups,

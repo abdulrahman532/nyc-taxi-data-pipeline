@@ -3,7 +3,7 @@
 select
     pickup_year,
     sum(total_trips) as total_trips,
-    round(sum(total_trips) / 1000000. 0, 2) as trips_millions,
+    round(sum(total_trips) / 1000000.0, 2) as trips_millions,
     sum(total_revenue) as total_revenue,
     round(sum(total_revenue) / 1000000.0, 2) as revenue_millions,
     sum(fare_revenue) as fare_revenue,

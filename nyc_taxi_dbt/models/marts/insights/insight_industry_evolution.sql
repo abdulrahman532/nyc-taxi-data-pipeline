@@ -9,4 +9,4 @@ select
     case when pickup_year <= 2014 then 'Ch1: Golden Era' when pickup_year between 2015 and 2019 then 'Ch2: Uber Disruption' when pickup_year = 2020 then 'Ch3: COVID' when pickup_year between 2021 and 2023 then 'Ch4: Recovery' else 'Ch5: New Normal' end as story_chapter,
     case when trips_yoy_pct > 10 then 'Strong Growth' when trips_yoy_pct > 0 then 'Growth' when trips_yoy_pct between -10 and 0 then 'Slight Decline' when trips_yoy_pct < -30 then 'Crisis' else 'Decline' end as industry_health
 from {{ ref('agg_yearly') }}
-order by pickup_year sql
+order by pickup_year
