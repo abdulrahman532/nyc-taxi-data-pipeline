@@ -4,9 +4,11 @@
 [![dbt](https://img.shields.io/badge/dbt-1.0+-orange.svg)](https://getdbt.com)
 [![Airflow](https://img.shields.io/badge/Apache%20Airflow-2.0+-green.svg)](https://airflow.apache.org)
 [![Snowflake](https://img.shields.io/badge/Snowflake-Data%20Cloud-29B5E8.svg)](https://snowflake.com)
+[![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-Streaming-231F20.svg)](https://kafka.apache.org)
+[![Apache Spark](https://img.shields.io/badge/Apache%20Spark-Streaming-E25A1C.svg)](https://spark.apache.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A production-ready **ELT data pipeline** for NYC Yellow Taxi trip data, featuring automated data ingestion from AWS S3, transformation with dbt, and analytics-ready data marts in Snowflake.
+A production-ready **ELT data pipeline** for NYC Yellow Taxi trip data, featuring automated batch data ingestion from AWS S3, **real-time streaming with fraud detection**, transformation with dbt, and analytics-ready data marts in Snowflake.
 
 ## 📋 Table of Contents
 
@@ -14,6 +16,7 @@ A production-ready **ELT data pipeline** for NYC Yellow Taxi trip data, featurin
 - [🏗️ Architecture](#️-architecture)
 - [📁 Project Structure](#-project-structure)
 - [📊 Data Models](#-data-models)
+- [📡 Real-Time Streaming](#-real-time-streaming)
 - [🚀 Setup & Installation](#-setup--installation)
 - [💻 Usage](#-usage)
 - [✅ Data Quality](#-data-quality)
@@ -21,26 +24,32 @@ A production-ready **ELT data pipeline** for NYC Yellow Taxi trip data, featurin
 
 ## 🎯 Overview
 
-This project implements a complete data pipeline that:
+This project implements a complete **batch + real-time** data pipeline that:
 
 - **Extracts** NYC Yellow Taxi trip data from the TLC public dataset
 - **Loads** raw Parquet files into Snowflake via AWS S3
 - **Transforms** data using dbt with a medallion architecture (staging → intermediate → marts)
-- **Orchestrates** workflows with Apache Airflow
-- **Delivers** analytics-ready datasets for business intelligence and machine learning
+- **Streams** real-time trip data through Kafka with Spark Streaming
+- **Detects** fraudulent trips in real-time using custom rules
+- **Orchestrates** batch workflows with Apache Airflow
+- **Delivers** analytics-ready datasets for business intelligence
 
 ### Key Features
 
 ✅ Incremental data loading with sync state management  
+✅ **Real-time streaming pipeline with Apache Kafka & Spark**  
+✅ **Fraud detection system with 15+ detection rules**  
+✅ **Live dashboard with Streamlit for real-time monitoring**  
 ✅ Data quality tests and validation  
 ✅ Dimensional modeling with fact and dimension tables  
-✅ Pre-built analytics for business insights  
-✅ ML-ready feature engineering  
+✅ One Big Table (OBT) for simplified analytics  
+✅ 11 pre-built business insights  
 ✅ Infrastructure as Code with AWS Lambda  
 
 ## 🏗️ Architecture
 
-```
+### Batch Pipeline
+\`\`\`
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   NYC TLC       │────▶│    AWS S3       │────▶│   Snowflake     │
 │   Open Data     │     │   Raw Storage   │     │   Data Cloud    │
@@ -60,97 +69,186 @@ This project implements a complete data pipeline that:
     │  Staging    │────▶│Intermediate │────▶│    Marts    │
     │   Layer     │     │   Layer     │     │   Layer     │
     └─────────────┘     └─────────────┘     └─────────────┘
-```
+\`\`\`
+
+### Real-Time Streaming Pipeline
+\`\`\`
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Taxi App   │────▶│   FastAPI   │────▶│    Kafka    │────▶│    Spark    │────▶│   Redis     │
+│  (Webhook)  │     │   Server    │     │   Broker    │     │  Streaming  │     │   Cache     │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+                                                                                       │
+                                                                                       ▼
+                                                                                ┌─────────────┐
+                                                                                │  Streamlit  │
+                                                                                │  Dashboard  │
+                                                                                └─────────────┘
+\`\`\`
 
 ## 📁 Project Structure
 
-```
+\`\`\`
 nyc-taxi-data-pipeline/
 ├── airflow/
 │   └── dags/
-│       ├── deploy_infrastructure_dag.py  # Infrastructure deployment
-│       ├── nyc_taxi_sync_dag.py          # Main data sync DAG
+│       ├── deploy_infrastructure_dag.py
+│       ├── nyc_taxi_sync_dag.py
 │       └── scripts/
-│           └── sync_manager.py           # Sync state management
+│           └── sync_manager.py
 ├── infrastructure/
-│   ├── deploy_lambda.py                  # Lambda deployment script
-│   └── lambda_function.py                # S3 data ingestion Lambda
+│   ├── deploy_lambda.py
+│   └── lambda_function.py
 ├── nyc_taxi_dbt/
 │   ├── dbt_project.yml
 │   ├── models/
-│   │   ├── staging/                      # Raw data cleaning
+│   │   ├── staging/
 │   │   │   ├── stg_trips.sql
-│   │   │   └── stg_taxi_zones.sql
-│   │   ├── intermediate/                 # Business logic
-│   │   │   ├── int_trips_cleaned.sql
-│   │   │   └── int_trips_enriched.sql
+│   │   │   └── stg_zones.sql
+│   │   ├── intermediate/
+│   │   │   └── int_trips_validated.sql
 │   │   └── marts/
-│   │       ├── core/                     # Dimensional models
+│   │       ├── core/
 │   │       │   ├── fct_trips.sql
+│   │       │   ├── obt_trips.sql
 │   │       │   ├── dim_zones.sql
 │   │       │   ├── dim_vendors.sql
 │   │       │   ├── dim_payment_types.sql
-│   │       │   └── dim_rate_codes.sql
-│   │       ├── aggregations/             # Pre-aggregated metrics
-│   │       │   ├── agg_monthly_overview.sql
-│   │       │   └── agg_monthly_by_borough.sql
-│   │       ├── insights/                 # Business analytics
-│   │       │   ├── insight_covid_recovery.sql
-│   │       │   ├── insight_congestion_pricing_impact.sql
-│   │       │   └── insight_industry_evolution.sql
-│   │       └── ml_features/              # ML feature store
-│   │           ├── ml_trip_features.sql
-│   │           └── ml_customer_segments.sql
+│   │       │   ├── dim_rate_codes.sql
+│   │       │   └── dim_date.sql
+│   │       ├── aggregations/
+│   │       │   ├── agg_monthly.sql
+│   │       │   ├── agg_quarterly.sql
+│   │       │   └── agg_yearly.sql
+│   │       └── insights/
+│   │           ├── insight_covid_recovery.sql
+│   │           ├── insight_industry_evolution.sql
+│   │           ├── insight_uber_effect.sql
+│   │           ├── insight_payment_shift.sql
+│   │           ├── insight_tipping_patterns.sql
+│   │           ├── insight_airport_lifeline.sql
+│   │           ├── insight_manhattan_share.sql
+│   │           ├── insight_fee_impact.sql
+│   │           ├── insight_route_pricing.sql
+│   │           ├── insight_zone_heatmap.sql
+│   │           └── insight_anomaly_breakdown.sql
+│   └── tests/
+│       ├── assert_pickup_before_dropoff.sql
+│       ├── assert_positive_fares.sql
+│       ├── assert_valid_speed.sql
+│       └── assert_valid_trip_duration.sql
+├── streaming/
+│   ├── docker/
+│   │   └── docker-compose.yml
+│   ├── api/
+│   │   ├── main.py
+│   │   ├── schemas.py
+│   │   ├── kafka_producer.py
+│   │   └── requirements.txt
+│   ├── spark/
+│   │   ├── fraud_detector.py
+│   │   └── requirements.txt
+│   ├── dashboard/
+│   │   ├── app.py
+│   │   ├── pages/
+│   │   │   ├── 1_📊_Live_Overview.py
+│   │   │   └── 2_🕵️_Fraud_Detection.py
+│   │   ├── utils/
+│   │   └── requirements.txt
+│   ├── simulator/
+│   │   ├── send_trips.py
+│   │   └── requirements.txt
+│   └── README.md
 ├── scripts/
-│   └── download_zone_lookup.py           # Zone data download
+│   └── download_zone_lookup.py
 ├── snowflake/
-│   └── setup.sql                         # Snowflake infrastructure
+│   └── setup.sql
 └── README.md
-```
+\`\`\`
 
 ## 📊 Data Models
 
 ### Staging Layer
 | Model | Description |
 |-------|-------------|
-| `stg_trips` | Cleaned raw trip records with standardized column names |
-| `stg_taxi_zones` | NYC taxi zone reference data |
+| \`stg_trips\` | Cleaned raw trip records with standardized column names |
+| \`stg_zones\` | NYC taxi zone reference data |
 
 ### Intermediate Layer
 | Model | Description |
 |-------|-------------|
-| `int_trips_cleaned` | Filtered trips with data quality rules applied |
-| `int_trips_enriched` | Trips enriched with zone and temporal attributes |
+| \`int_trips_validated\` | Trips with data quality validation and filtering |
 
 ### Marts Layer
 
 #### Core (Dimensional Model)
 | Model | Type | Description |
 |-------|------|-------------|
-| `fct_trips` | Fact | Core trip transactions with metrics |
-| `dim_zones` | Dimension | Pickup/dropoff location attributes |
-| `dim_vendors` | Dimension | Taxi vendor information |
-| `dim_payment_types` | Dimension | Payment method lookup |
-| `dim_rate_codes` | Dimension | Rate code descriptions |
+| \`fct_trips\` | Fact | Core trip transactions with all metrics |
+| \`obt_trips\` | OBT | One Big Table - denormalized for easy analytics |
+| \`dim_zones\` | Dimension | Pickup/dropoff location attributes |
+| \`dim_vendors\` | Dimension | Taxi vendor information |
+| \`dim_payment_types\` | Dimension | Payment method lookup |
+| \`dim_rate_codes\` | Dimension | Rate code descriptions |
+| \`dim_date\` | Dimension | Date dimension for time-based analysis |
 
 #### Aggregations
 | Model | Description |
 |-------|-------------|
-| `agg_monthly_overview` | Monthly KPIs: trips, revenue, avg fare |
-| `agg_monthly_by_borough` | Borough-level monthly metrics |
+| \`agg_monthly\` | Monthly KPIs: trips, revenue, avg fare, tips |
+| \`agg_quarterly\` | Quarterly performance metrics |
+| \`agg_yearly\` | Yearly trends and YoY comparisons |
 
-#### Insights
+#### Insights (11 Business Analytics)
 | Model | Description |
 |-------|-------------|
-| `insight_covid_recovery` | COVID-19 impact and recovery analysis |
-| `insight_congestion_pricing_impact` | Manhattan congestion pricing effects |
-| `insight_industry_evolution` | Long-term industry trends (2013-present) |
+| \`insight_covid_recovery\` | COVID-19 impact and recovery analysis |
+| \`insight_industry_evolution\` | Long-term industry trends (2009-present) |
+| \`insight_uber_effect\` | Impact of rideshare competition |
+| \`insight_payment_shift\` | Cash to card payment transition |
+| \`insight_tipping_patterns\` | Tipping behavior analysis |
+| \`insight_airport_lifeline\` | Airport trip importance analysis |
+| \`insight_manhattan_share\` | Manhattan vs outer borough trends |
+| \`insight_fee_impact\` | Congestion surcharge and fee analysis |
+| \`insight_route_pricing\` | Popular route pricing patterns |
+| \`insight_zone_heatmap\` | Pickup/dropoff zone activity |
+| \`insight_anomaly_breakdown\` | Data quality anomaly detection |
 
-#### ML Features
-| Model | Description |
-|-------|-------------|
-| `ml_trip_features` | Feature vectors for trip prediction models |
-| `ml_customer_segments` | Customer segmentation features |
+## 📡 Real-Time Streaming
+
+The streaming module provides real-time taxi trip processing with fraud detection.
+
+### Components
+- **FastAPI Server**: Webhook receiver for incoming trips
+- **Apache Kafka**: Message broker for trip events
+- **Spark Streaming**: Real-time fraud detection engine
+- **Redis**: Metrics caching layer
+- **Streamlit Dashboard**: Live monitoring UI
+
+### Fraud Detection Rules
+The system detects fraud using 15+ rules including:
+- Impossible speed (> 100 mph)
+- Zero distance with fare
+- Tip exceeds fare amount
+- Fake airport fees
+- Night cash trip patterns
+- And more...
+
+### Quick Start
+\`\`\`bash
+# Start infrastructure
+cd streaming/docker && docker-compose up -d
+
+# Start API server
+cd streaming/api && uvicorn main:app --port 8000
+
+# Start Spark fraud detector
+cd streaming/spark && spark-submit fraud_detector.py
+
+# Start dashboard
+cd streaming/dashboard && streamlit run app.py
+\`\`\`
+
+See [streaming/README.md](streaming/README.md) for detailed documentation.
 
 ## 🚀 Setup & Installation
 
@@ -160,35 +258,36 @@ nyc-taxi-data-pipeline/
 - Snowflake account
 - AWS account (for S3 storage)
 - Apache Airflow 2.0+
+- Docker (for streaming)
 
 ### 1. Clone the Repository
 
-```bash
+\`\`\`bash
 git clone https://github.com/abdulrahman532/nyc-taxi-data-pipeline.git
 cd nyc-taxi-data-pipeline
-```
+\`\`\`
 
 ### 2. Set Up Python Environment
 
-```bash
+\`\`\`bash
 python -m venv dbt_venv
 source dbt_venv/bin/activate
 pip install dbt-snowflake apache-airflow boto3
-```
+\`\`\`
 
 ### 3. Configure Snowflake
 
 Run the setup script in Snowflake:
 
-```sql
+\`\`\`sql
 -- Execute snowflake/setup.sql in Snowflake Worksheets
-```
+\`\`\`
 
 ### 4. Configure dbt Profile
 
-Create `~/.dbt/profiles.yml`:
+Create \`~/.dbt/profiles.yml\`:
 
-```yaml
+\`\`\`yaml
 nyc_taxi:
   target: dev
   outputs:
@@ -202,20 +301,20 @@ nyc_taxi:
       warehouse: TAXI_WH
       schema: RAW
       threads: 4
-```
+\`\`\`
 
 ### 5. Install dbt Packages
 
-```bash
+\`\`\`bash
 cd nyc_taxi_dbt
 dbt deps
-```
+\`\`\`
 
 ## 💻 Usage
 
 ### Run dbt Models
 
-```bash
+\`\`\`bash
 cd nyc_taxi_dbt
 
 # Run all models
@@ -226,68 +325,85 @@ dbt run --select staging
 dbt run --select intermediate
 dbt run --select marts
 
+# Run only insights
+dbt run --select insights
+
 # Run with tests
 dbt build
-```
+\`\`\`
 
 ### Run Data Tests
 
-```bash
+\`\`\`bash
 dbt test
-```
+\`\`\`
 
 ### Generate Documentation
 
-```bash
+\`\`\`bash
 dbt docs generate
 dbt docs serve
-```
+\`\`\`
 
 ### Trigger Airflow DAGs
 
-```bash
+\`\`\`bash
 # Via Airflow CLI
 airflow dags trigger nyc_taxi_sync_dag
 
 # Or use the Airflow Web UI
-```
+\`\`\`
 
 ## ✅ Data Quality
 
 The pipeline includes comprehensive data quality checks:
 
-- **Schema Tests**: Not null, unique, accepted values
-- **Freshness Tests**: Data recency monitoring
-- **Custom Tests**: Business rule validation
-- **Row Count Validation**: Source-to-target reconciliation
+### Schema Tests
+- Not null constraints
+- Unique keys validation
+- Accepted values checks
+
+### Custom Tests
+| Test | Description |
+|------|-------------|
+| \`assert_pickup_before_dropoff\` | Validates pickup time < dropoff time |
+| \`assert_positive_fares\` | Ensures fares are positive |
+| \`assert_valid_speed\` | Checks for reasonable trip speeds |
+| \`assert_valid_trip_duration\` | Validates trip duration range |
 
 ## 📈 Sample Queries
 
 ### Monthly Revenue Trend
-```sql
-SELECT * FROM NYC_TAXI_DB.MARTS.AGG_MONTHLY_OVERVIEW
+\`\`\`sql
+SELECT * FROM NYC_TAXI_DB.MARTS.AGG_MONTHLY
 ORDER BY year, month;
-```
+\`\`\`
+
+### COVID Recovery Analysis
+\`\`\`sql
+SELECT * FROM NYC_TAXI_DB.MARTS.INSIGHT_COVID_RECOVERY
+ORDER BY year, month;
+\`\`\`
 
 ### Top Pickup Locations
-```sql
+\`\`\`sql
 SELECT 
     pickup_zone,
     pickup_borough,
     COUNT(*) as trip_count,
     SUM(total_amount) as total_revenue
-FROM NYC_TAXI_DB.MARTS.FCT_TRIPS
+FROM NYC_TAXI_DB.MARTS.OBT_TRIPS
 GROUP BY 1, 2
 ORDER BY trip_count DESC
 LIMIT 10;
-```
+\`\`\`
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+2. Create a feature branch (\`git checkout -b feature/amazing-feature\`)
+3. Commit your changes (\`git commit -m 'Add amazing feature'\`)
+4. Push to the branch (\`git push origin feature/amazing-feature\`)
 5. Open a Pull Request
 
 ## 📄 License
