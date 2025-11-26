@@ -1,6 +1,7 @@
-streamlit==1.31.0
-pandas==2.2.0
-plotly==5.18.0
-redis==5.0.1
-folium==0.15.1
-streamlit-folium==0.17.0
+# Latest versions as of November 2025
+streamlit==1.51.0
+pandas==2.3.3
+plotly==6.5.0
+redis==7.1.0
+folium==0.20.0
+streamlit-folium==0.25.3

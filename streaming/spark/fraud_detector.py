@@ -6,6 +6,7 @@ from pyspark.sql.types import (
     StructType, StructField, StringType, IntegerType,
     DoubleType, TimestampType, ArrayType
 )
+import pandas as pd
 import redis
 import json
 import logging
@@ -55,15 +56,15 @@ class RedisClient:
         today = datetime.now().strftime("%Y-%m-%d")
         
         if 'trip_count' in metrics:
-            pipe.incr(f"metrics:{today}:trips", metrics['trip_count'])
+            pipe.incrby(f"metrics:{today}:trips", int(metrics['trip_count']))
         if 'total_revenue' in metrics:
-            pipe.incrbyfloat(f"metrics:{today}:revenue", metrics['total_revenue'])
+            pipe.incrbyfloat(f"metrics:{today}:revenue", float(metrics['total_revenue']))
         if 'fraud_count' in metrics:
-            pipe.incr(f"metrics:{today}:fraud_alerts", metrics['fraud_count'])
+            pipe.incrby(f"metrics:{today}:fraud_alerts", int(metrics['fraud_count']))
         if 'day_trips' in metrics:
-            pipe.incr(f"metrics:{today}:day_trips", metrics['day_trips'])
+            pipe.incrby(f"metrics:{today}:day_trips", int(metrics['day_trips']))
         if 'night_trips' in metrics:
-            pipe.incr(f"metrics:{today}:night_trips", metrics['night_trips'])
+            pipe.incrby(f"metrics:{today}:night_trips", int(metrics['night_trips']))
         
         for key in ['trips', 'revenue', 'fraud_alerts', 'day_trips', 'night_trips']:
             pipe.expire(f"metrics:{today}:{key}", 7 * 24 * 3600)
@@ -84,8 +85,37 @@ class RedisClient:
     
     def update_hourly_stats(self, hour_val: int, count: int, revenue: float):
         today = datetime.now().strftime("%Y-%m-%d")
-        self.client.hset(f"metrics:{today}:hourly:trips", str(hour_val), count)
-        self.client.hset(f"metrics:{today}:hourly:revenue", str(hour_val), revenue)
+        self.client.hincrby(f"metrics:{today}:hourly:trips", str(hour_val), count)
+        self.client.hincrbyfloat(f"metrics:{today}:hourly:revenue", str(hour_val), revenue)
+        self.client.expire(f"metrics:{today}:hourly:trips", 7 * 24 * 3600)
+        self.client.expire(f"metrics:{today}:hourly:revenue", 7 * 24 * 3600)
+    
+    def update_zone_stats(self, pickup_zones: dict, dropoff_zones: dict):
+        """Update pickup/dropoff zone statistics"""
+        pipe = self.client.pipeline()
+        for zone_id, count in pickup_zones.items():
+            pipe.zincrby("stats:pickup_zones", count, str(zone_id))
+        for zone_id, count in dropoff_zones.items():
+            pipe.zincrby("stats:dropoff_zones", count, str(zone_id))
+        pipe.execute()
+    
+    def update_payment_stats(self, payment_types: dict):
+        """Update payment type statistics"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        pipe = self.client.pipeline()
+        for ptype, count in payment_types.items():
+            pipe.hincrby(f"stats:{today}:payment_types", str(ptype), count)
+        pipe.expire(f"stats:{today}:payment_types", 7 * 24 * 3600)
+        pipe.execute()
+    
+    def update_vendor_stats(self, vendors: dict):
+        """Update vendor statistics"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        pipe = self.client.pipeline()
+        for vendor, count in vendors.items():
+            pipe.hincrby(f"stats:{today}:vendors", str(vendor), count)
+        pipe.expire(f"stats:{today}:vendors", 7 * 24 * 3600)
+        pipe.execute()
 
 
 def process_batch(batch_df, batch_id):
@@ -96,10 +126,11 @@ def process_batch(batch_df, batch_id):
     redis_client = RedisClient()
     pdf = batch_df.toPandas()
     
+    # Basic metrics
     trip_count = len(pdf)
-    total_revenue = pdf['total_amount'].sum()
-    day_trips = pdf[~pdf['is_night']].shape[0]
-    night_trips = pdf[pdf['is_night']].shape[0]
+    total_revenue = float(pdf['total_amount'].sum())
+    day_trips = int(pdf[~pdf['is_night']].shape[0])
+    night_trips = int(pdf[pdf['is_night']].shape[0])
     fraud_df = pdf[pdf['fraud_score'] >= 50]
     fraud_count = len(fraud_df)
     
@@ -111,22 +142,41 @@ def process_batch(batch_df, batch_id):
         'night_trips': night_trips
     })
     
+    # Fraud alerts
     for _, row in fraud_df.iterrows():
         alert = {
             'trip_id': row['trip_id'],
             'fraud_score': int(row['fraud_score']),
-            'fraud_flags': row['fraud_flags'],
-            'PULocationID': int(row['PULocationID']),
-            'DOLocationID': int(row['DOLocationID']),
-            'fare_amount': float(row['fare_amount']),
+            'fraud_flags': list(row['fraud_flags']) if row['fraud_flags'] else [],
+            'PULocationID': int(row['PULocationID']) if pd.notna(row['PULocationID']) else 0,
+            'DOLocationID': int(row['DOLocationID']) if pd.notna(row['DOLocationID']) else 0,
+            'fare_amount': float(row['fare_amount']) if pd.notna(row['fare_amount']) else 0,
             'is_night': bool(row['is_night']),
             'timestamp': datetime.now().isoformat()
         }
         redis_client.add_fraud_alert(alert)
     
+    # Hourly stats
     if 'pickup_hour' in pdf.columns:
         for hr, group in pdf.groupby('pickup_hour'):
-            redis_client.update_hourly_stats(int(hr), len(group), float(group['total_amount'].sum()))
+            if pd.notna(hr):
+                redis_client.update_hourly_stats(int(hr), len(group), float(group['total_amount'].sum()))
+    
+    # Zone stats
+    pickup_zones = pdf['PULocationID'].value_counts().to_dict()
+    dropoff_zones = pdf['DOLocationID'].value_counts().to_dict()
+    redis_client.update_zone_stats(
+        {k: int(v) for k, v in pickup_zones.items() if pd.notna(k)},
+        {k: int(v) for k, v in dropoff_zones.items() if pd.notna(k)}
+    )
+    
+    # Payment type stats
+    payment_stats = pdf['payment_type'].value_counts().to_dict()
+    redis_client.update_payment_stats({k: int(v) for k, v in payment_stats.items() if pd.notna(k)})
+    
+    # Vendor stats
+    vendor_stats = pdf['VendorID'].value_counts().to_dict()
+    redis_client.update_vendor_stats({k: int(v) for k, v in vendor_stats.items() if pd.notna(k)})
     
     logger.info(f"✅ Batch {batch_id}: {trip_count} trips, ${total_revenue:.2f}, {fraud_count} fraud alerts")
 
@@ -136,7 +186,7 @@ def main():
     
     spark = (SparkSession.builder
         .appName("NYC Taxi Fraud Detector")
-        .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0")
+        .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1")
         .config("spark.sql.streaming.checkpointLocation", "/tmp/checkpoint")
         .getOrCreate())
     

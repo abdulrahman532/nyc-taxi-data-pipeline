@@ -40,3 +40,68 @@ class RedisClient:
     
     def get_top_fraud_routes(self, limit=10) -> list:
         return self.client.zrevrange("fraud:by_route", 0, limit - 1, withscores=True)
+    
+    # ============ NEW AGGREGATIONS ============
+    
+    def get_top_pickup_zones(self, limit=10) -> list:
+        """Get top pickup zones by trip count"""
+        return self.client.zrevrange("stats:pickup_zones", 0, limit - 1, withscores=True)
+    
+    def get_top_dropoff_zones(self, limit=10) -> list:
+        """Get top dropoff zones by trip count"""
+        return self.client.zrevrange("stats:dropoff_zones", 0, limit - 1, withscores=True)
+    
+    def get_payment_type_stats(self) -> dict:
+        """Get payment type distribution"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self.client.hgetall(f"stats:{today}:payment_types")
+    
+    def get_vendor_stats(self) -> dict:
+        """Get vendor distribution"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self.client.hgetall(f"stats:{today}:vendors")
+    
+    def get_distance_stats(self) -> dict:
+        """Get distance statistics"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        return {
+            'total_distance': float(self.client.get(f"stats:{today}:total_distance") or 0),
+            'avg_distance': float(self.client.get(f"stats:{today}:avg_distance") or 0)
+        }
+    
+    def get_passenger_stats(self) -> dict:
+        """Get passenger count distribution"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self.client.hgetall(f"stats:{today}:passengers")
+    
+    def get_metrics(self) -> dict:
+        """Alias for get_today_metrics"""
+        return self.get_today_metrics()
+    
+    def get_zone_stats(self) -> dict:
+        """Get zone statistics for maps"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        # Get pickup zones
+        pickup_zones = {}
+        pickup_data = self.client.zrevrange("stats:pickup_zones", 0, -1, withscores=True)
+        for zone, count in pickup_data:
+            pickup_zones[zone] = int(count)
+        
+        # Get dropoff zones  
+        dropoff_zones = {}
+        dropoff_data = self.client.zrevrange("stats:dropoff_zones", 0, -1, withscores=True)
+        for zone, count in dropoff_data:
+            dropoff_zones[zone] = int(count)
+        
+        # Get revenue by zone (if exists)
+        revenue_zones = {}
+        revenue_data = self.client.zrevrange("stats:revenue_by_zone", 0, -1, withscores=True)
+        for zone, rev in revenue_data:
+            revenue_zones[zone] = float(rev)
+        
+        return {
+            'pickup': pickup_zones,
+            'dropoff': dropoff_zones,
+            'revenue': revenue_zones
+        }

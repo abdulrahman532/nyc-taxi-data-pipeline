@@ -1,2 +1,6 @@
-pyspark==3.5.0
-redis==5.0.1
+# Latest versions as of November 2025
+pyspark==4.0.1
+redis==7.1.0
+pandas==2.3.3
+pyarrow==22.0.0
+kafka-python-ng==2.2.3

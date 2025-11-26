@@ -1,4 +1,7 @@
-"""Airflow DAG for NYC Taxi data synchronization."""
+"""Airflow DAG for NYC Taxi data synchronization.
+
+After successful data load, triggers the dbt transformation pipeline.
+"""
 
 import os
 import sys
@@ -7,6 +10,7 @@ from airflow import DAG
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.python import BranchPythonOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 sys.path.append(os.path.expanduser("~/airflow/dags/scripts"))
 from sync_manager import smart_sync_logic
@@ -44,6 +48,15 @@ with DAG(
         """,
     )
     
+    # Trigger dbt transformations after successful load
+    trigger_dbt = TriggerDagRunOperator(
+        task_id="trigger_dbt_pipeline",
+        trigger_dag_id="dbt_transformation_pipeline",
+        wait_for_completion=False,
+        poke_interval=30,
+    )
+    
     skip = EmptyOperator(task_id="skip_load")
     
     sync >> [load, skip]
+    load >> trigger_dbt

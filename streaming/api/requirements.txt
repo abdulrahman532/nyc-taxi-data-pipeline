@@ -1,5 +1,6 @@
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-kafka-python==2.0.2
-pydantic==2.5.3
-python-dotenv==1.0.0
+# Latest versions as of November 2025
+fastapi==0.122.0
+uvicorn[standard]==0.38.0
+kafka-python-ng==2.2.3
+pydantic==2.12.5
+python-dotenv==1.2.1

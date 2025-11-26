@@ -1,32 +1,73 @@
-version: '3.8'
+# NYC Taxi Real-Time Streaming Pipeline
+# Full Docker Compose with Latest Versions (November 2025)
+# Kafka 4.1.1 (KRaft - No Zookeeper!) + Spark 4.0.1 + Redis + FastAPI + Streamlit
 
 services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: zookeeper
-    ports:
-      - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-
+  # ============================================
+  # KAFKA (KRaft Mode - No Zookeeper Required!)
+  # Latest: Apache Kafka 4.1.1 (Nov 12, 2025)
+  # ============================================
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
+    image: apache/kafka:4.1.1
     container_name: kafka
-    depends_on:
-      - zookeeper
+    hostname: kafka
     ports:
       - "9092:9092"
       - "29092:29092"
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # KRaft Configuration
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      
+      # Listeners
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://kafka:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      
+      # Cluster Settings
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      
+      # Cluster ID (keep consistent)
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - streaming-network
 
+  # ============================================
+  # KAFKA UI
+  # ============================================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: nyc-taxi-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    networks:
+      - streaming-network
+
+  # ============================================
+  # REDIS (Metrics Cache)
+  # ============================================
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -35,18 +76,163 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - streaming-network
 
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
-    depends_on:
-      - kafka
+  # ============================================
+  # SPARK MASTER (Apache Spark 4.0.1 - Sep 2025)
+  # ============================================
+  spark-master:
+    build:
+      context: ../spark
+      dockerfile: Dockerfile.worker
+    container_name: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
-      - "8080:8080"
+      - "7077:7077"   # Spark Master port
+      - "8081:8080"   # Spark Master UI
     environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      SPARK_MODE: master
+      SPARK_MASTER_HOST: spark-master
+      SPARK_MASTER_PORT: 7077
+      SPARK_MASTER_WEBUI_PORT: 8080
+    volumes:
+      - ../spark:/app/spark
+      - spark_logs:/opt/spark/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - streaming-network
 
+  # ============================================
+  # SPARK WORKER
+  # ============================================
+  spark-worker:
+    build:
+      context: ../spark
+      dockerfile: Dockerfile.worker
+    container_name: spark-worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "8082:8081"   # Spark Worker UI
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_CORES: 2
+      SPARK_WORKER_MEMORY: 2g
+      SPARK_WORKER_WEBUI_PORT: 8081
+    volumes:
+      - ../spark:/app/spark
+      - spark_logs:/opt/spark/logs
+    networks:
+      - streaming-network
+
+  # ============================================
+  # SPARK STREAMING JOB (Fraud Detector)
+  # ============================================
+  spark-job:
+    build:
+      context: ../spark
+      dockerfile: Dockerfile
+    container_name: spark-job
+    user: root
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      spark-master:
+        condition: service_healthy
+    volumes:
+      - ../spark:/app/spark
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: nyc.taxi.trips.raw
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SPARK_USER: root
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1
+      --conf spark.executor.memory=1g
+      --conf spark.driver.memory=1g
+      --conf spark.driver.extraJavaOptions=-Divy.home=/tmp/.ivy2
+      --conf spark.executor.extraJavaOptions=-Divy.home=/tmp/.ivy2
+      /app/spark/fraud_detector.py
+    networks:
+      - streaming-network
+    restart: on-failure
+
+  # ============================================
+  # FASTAPI (Webhook Server)
+  # ============================================
+  fastapi:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: fastapi
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC: nyc.taxi.trips.raw
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streaming-network
+
+  # ============================================
+  # STREAMLIT DASHBOARD
+  # ============================================
+  dashboard:
+    build:
+      context: ../dashboard
+      dockerfile: Dockerfile
+    container_name: dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - streaming-network
+
+# ============================================
+# VOLUMES
+# ============================================
 volumes:
+  kafka_data:
+    driver: local
   redis_data:
+    driver: local
+  spark_logs:
+    driver: local
+
+# ============================================
+# NETWORKS
+# ============================================
+networks:
+  streaming-network:
+    driver: bridge
