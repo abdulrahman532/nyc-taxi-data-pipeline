@@ -74,116 +74,40 @@ flowchart LR
 
 ## 📁 Project Structure
 
-\`\`\`
-nyc-taxi-data-pipeline/
-├── airflow/
-│   └── dags/
-│       ├── deploy_infrastructure_dag.py
-│       ├── nyc_taxi_sync_dag.py
-│       └── scripts/
-│           └── sync_manager.py
-├── infrastructure/
-│   ├── deploy_lambda.py
-│   └── lambda_function.py
-├── nyc_taxi_dbt/
-│   ├── dbt_project.yml
-│   ├── models/
-│   │   ├── staging/
-│   │   │   ├── stg_trips.sql
-│   │   │   └── stg_zones.sql
-│   │   ├── intermediate/
-│   │   │   └── int_trips_validated.sql
-│   │   └── marts/
-│   │       ├── core/
-│   │       │   ├── obt_trips.sql
-│   │       │   ├── dim_zones.sql
-│   │       │   ├── dim_payment_types.sql
-│   │       │   └── dim_rate_codes.sql
-│   │       ├── aggregations/
-│   │       │   ├── agg_monthly.sql
-│   │       │   ├── agg_quarterly.sql
-│   │       │   └── agg_yearly.sql
-│   │       └── insights/
-│   │           ├── insight_uber_effect.sql
-│   │           ├── insight_covid_recovery.sql
-│   │           ├── insight_airport_lifeline.sql
-│   │           ├── insight_payment_shift.sql
-│   │           ├── insight_manhattan_share.sql
-│   │           ├── insight_tipping_patterns.sql
-│   │           ├── insight_route_pricing.sql
-│   │           ├── insight_fee_impact.sql
-│   │           ├── insight_zone_heatmap.sql
-│   │           ├── insight_anomaly_breakdown.sql
-│   │           └── insight_industry_evolution.sql
-│   └── tests/
-│       ├── assert_pickup_before_dropoff.sql
-│       ├── assert_positive_fares.sql
-│       ├── assert_valid_speed.sql
-│       └── assert_valid_trip_duration.sql
-├── streaming/
-│   ├── docker/
-│   │   └── docker-compose.yml
-│   ├── api/
-│   │   ├── main.py
-│   │   ├── schemas.py
-│   │   ├── kafka_producer.py
-│   │   └── requirements.txt
-│   ├── spark/
-│   │   ├── fraud_detector.py
-│   │   └── requirements.txt
-│   ├── dashboard/
-│   │   ├── app.py
-│   │   ├── pages/
-│   │   │   ├── 1_📊_Live_Overview.py
-│   │   │   └── 2_🕵️_Fraud_Detection.py
-│   │   ├── utils/
-│   │   └── requirements.txt
-│   ├── simulator/
-│   │   ├── send_trips.py
-│   │   └── requirements.txt
-│   └── README.md
-├── scripts/
-│   └── download_zone_lookup.py
-├── snowflake/
-│   └── setup.sql
-└── README.md
-\`\`\`
+| Directory | Description |
+|-----------|-------------|
+| **📂 airflow/** | Apache Airflow DAGs and orchestration scripts |
+| ↳ `dags/` | Pipeline DAGs (`deploy_infrastructure_dag.py`, `nyc_taxi_sync_dag.py`) |
+| ↳ `scripts/` | Helper scripts (`sync_manager.py`) |
+| **📂 infrastructure/** | AWS Lambda deployment code |
+| ↳ `deploy_lambda.py` | Lambda deployment script |
+| ↳ `lambda_function.py` | S3 → Snowflake ingestion function |
+| **📂 nyc_taxi_dbt/** | dbt transformation project |
+| ↳ `models/staging/` | `stg_trips.sql`, `stg_zones.sql` |
+| ↳ `models/intermediate/` | `int_trips_validated.sql` |
+| ↳ `models/marts/core/` | `obt_trips.sql`, `dim_zones.sql`, `dim_payment_types.sql`, `dim_rate_codes.sql` |
+| ↳ `models/marts/aggregations/` | `agg_monthly.sql`, `agg_quarterly.sql`, `agg_yearly.sql` |
+| ↳ `models/marts/insights/` | 11 insight models (see Data Models section) |
+| ↳ `tests/` | Data quality tests (4 custom assertions) |
+| **📂 streaming/** | Real-time streaming pipeline |
+| ↳ `docker/` | Docker Compose for Kafka, Zookeeper, Redis |
+| ↳ `api/` | FastAPI webhook server |
+| ↳ `spark/` | Spark Streaming fraud detector |
+| ↳ `dashboard/` | Streamlit live monitoring dashboard |
+| ↳ `simulator/` | Trip data simulator for testing |
+| **📂 scripts/** | Utility scripts (`download_zone_lookup.py`) |
+| **📂 snowflake/** | Database setup SQL (`setup.sql`) |
 
 ## 📊 Data Models
 
 ### Snowflake Database Structure
-\`\`\`
-NYC_TAXI_DB
-│
-├── RAW_staging (Views)
-│   ├── stg_trips
-│   └── stg_zones
-│
-├── RAW_intermediate (Views)
-│   └── int_trips_validated
-│
-├── RAW_marts (Tables)
-│   ├── dim_zones              ← Dimension
-│   ├── dim_payment_types      ← Dimension
-│   ├── dim_rate_codes         ← Dimension
-│   ├── obt_trips              ← One Big Table (Denormalized)
-│   ├── agg_monthly            ← Aggregated
-│   ├── agg_quarterly          ← Aggregated
-│   └── agg_yearly             ← Aggregated
-│
-└── RAW_insights (Tables - Ready for Visualization)
-    ├── insight_uber_effect
-    ├── insight_covid_recovery
-    ├── insight_airport_lifeline
-    ├── insight_payment_shift
-    ├── insight_manhattan_share
-    ├── insight_tipping_patterns
-    ├── insight_route_pricing
-    ├── insight_fee_impact
-    ├── insight_zone_heatmap
-    ├── insight_anomaly_breakdown
-    └── insight_industry_evolution
-\`\`\`
+
+| Schema | Type | Tables/Views |
+|--------|------|--------------|
+| **RAW_staging** | Views | `stg_trips`, `stg_zones` |
+| **RAW_intermediate** | Views | `int_trips_validated` |
+| **RAW_marts** | Tables | `dim_zones`, `dim_payment_types`, `dim_rate_codes`, `obt_trips`, `agg_monthly`, `agg_quarterly`, `agg_yearly` |
+| **RAW_insights** | Tables | `insight_uber_effect`, `insight_covid_recovery`, `insight_airport_lifeline`, `insight_payment_shift`, `insight_manhattan_share`, `insight_tipping_patterns`, `insight_route_pricing`, `insight_fee_impact`, `insight_zone_heatmap`, `insight_anomaly_breakdown`, `insight_industry_evolution` |
 
 ### Staging Layer (Views)
 | Model | Description |
