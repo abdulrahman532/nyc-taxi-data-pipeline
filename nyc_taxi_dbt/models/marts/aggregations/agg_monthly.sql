@@ -1,5 +1,8 @@
 {{ config(materialized='table') }}
 
+-- Monthly aggregations using the denormalized OBT table
+-- This provides all the pre-computed metrics for BI dashboards
+
 select
     pickup_month,
     pickup_year,
@@ -32,6 +35,6 @@ select
     round(sum(case when has_tolls then 1 else 0 end) * 100.0 / count(*), 2) as tolls_pct,
     sum(case when is_refund then 1 else 0 end) as refund_count,
     sum(case when is_high_fare then 1 else 0 end) as high_fare_count
-from {{ ref('fct_trips') }}
+from {{ ref('obt_trips') }}
 group by 1, 2, 3
 order by 1

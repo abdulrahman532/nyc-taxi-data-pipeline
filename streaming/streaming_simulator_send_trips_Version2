@@ -1,0 +1,112 @@
+"""Trip Simulator - Sends sample trips to the API"""
+
+import requests
+import random
+import time
+import argparse
+from datetime import datetime, timedelta
+
+API_URL = "http://localhost:8000/api/v1/trips"
+
+MANHATTAN_ZONES = [4, 12, 13, 24, 41, 42, 43, 45, 48, 50, 68, 79, 87, 88, 90, 100, 
+                   107, 113, 114, 125, 137, 140, 141, 142, 143, 144, 148, 151, 158, 
+                   161, 162, 163, 164, 170, 186, 209, 211, 224, 229, 230, 231, 232, 
+                   233, 234, 236, 237, 238, 239, 246, 249, 261, 262, 263]
+
+def generate_trip():
+    pickup_time = datetime.now() - timedelta(minutes=random.randint(0, 30))
+    duration = random.randint(5, 45)
+    dropoff_time = pickup_time + timedelta(minutes=duration)
+    distance = random.uniform(0.5, 15)
+    fare = 2. 5 + (distance * 2.5) + (duration * 0.35)
+    tip = fare * random.uniform(0, 0.3) if random.random() > 0.3 else 0
+    
+    return {
+        "VendorID": random.choice([1, 2]),
+        "tpep_pickup_datetime": pickup_time. isoformat(),
+        "tpep_dropoff_datetime": dropoff_time. isoformat(),
+        "passenger_count": random. randint(1, 4),
+        "trip_distance": round(distance, 2),
+        "RatecodeID": 1,
+        "store_and_fwd_flag": "N",
+        "PULocationID": random.choice(MANHATTAN_ZONES),
+        "DOLocationID": random.choice(MANHATTAN_ZONES),
+        "payment_type": random.choice([1, 1, 1, 2]),
+        "fare_amount": round(fare, 2),
+        "extra": 0. 5,
+        "mta_tax": 0.5,
+        "tip_amount": round(tip, 2),
+        "tolls_amount": 0,
+        "improvement_surcharge": 0. 3,
+        "total_amount": round(fare + tip + 1.3, 2),
+        "congestion_surcharge": 2.5,
+        "airport_fee": 0,
+        "cbd_congestion_fee": 0
+    }
+
+def generate_fraud_trip():
+    trip = generate_trip()
+    fraud_type = random.choice(['speed', 'fare', 'tip', 'location'])
+    
+    if fraud_type == 'speed':
+        trip['trip_distance'] = 50
+        pickup = datetime.fromisoformat(trip['tpep_pickup_datetime'])
+        trip['tpep_dropoff_datetime'] = (pickup + timedelta(minutes=5)).isoformat()
+    elif fraud_type == 'fare':
+        trip['fare_amount'] = trip['trip_distance'] * 15
+        trip['total_amount'] = trip['fare_amount'] + 5
+    elif fraud_type == 'tip':
+        trip['tip_amount'] = trip['fare_amount'] * 2
+        trip['total_amount'] = trip['fare_amount'] + trip['tip_amount']
+    elif fraud_type == 'location':
+        trip['PULocationID'] = trip['DOLocationID']
+        trip['fare_amount'] = 50
+    
+    return trip
+
+def main():
+    parser = argparse.ArgumentParser(description='NYC Taxi Trip Simulator')
+    parser. add_argument('--api-url', default=API_URL, help='API URL')
+    parser. add_argument('--rate', type=float, default=1.0, help='Trips per second')
+    parser.add_argument('--fraud-rate', type=float, default=0.1, help='Fraud trip rate (0-1)')
+    parser.add_argument('--count', type=int, default=0, help='Number of trips (0=infinite)')
+    args = parser.parse_args()
+    
+    print(f"🚀 Starting simulator...")
+    print(f"📡 API URL: {args.api_url}")
+    print(f"⏱️  Rate: {args. rate} trips/sec")
+    print(f"🕵️ Fraud rate: {args.fraud_rate * 100}%")
+    print("")
+    
+    sent = 0
+    while args.count == 0 or sent < args.count:
+        try:
+            if random.random() < args.fraud_rate:
+                trip = generate_fraud_trip()
+                print(f"🔴 Sending FRAUD trip...")
+            else:
+                trip = generate_trip()
+                print(f"🟢 Sending normal trip...")
+            
+            response = requests.post(args.api_url, json=trip, timeout=10)
+            
+            if response.status_code == 201:
+                data = response.json()
+                print(f"✅ Trip sent: {data. get('trip_id', 'unknown')}")
+            else:
+                print(f"❌ Error: {response.status_code} - {response.text}")
+            
+            sent += 1
+            time.sleep(1 / args.rate)
+            
+        except KeyboardInterrupt:
+            print("\n🛑 Stopped by user")
+            break
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            time.sleep(1)
+    
+    print(f"\n📊 Total trips sent: {sent}")
+
+if __name__ == "__main__":
+    main()

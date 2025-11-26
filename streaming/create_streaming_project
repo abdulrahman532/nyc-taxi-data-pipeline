@@ -1,0 +1,1006 @@
+#!/bin/bash
+
+# ============================================
+# NYC Taxi Real-Time Streaming Project Setup
+# Run this script to create all project files
+# ============================================
+
+echo "🚀 Creating NYC Taxi Real-Time Streaming Project..."
+
+# ============================================
+# CREATE DIRECTORY STRUCTURE
+# ============================================
+echo "📁 Creating directory structure..."
+
+mkdir -p streaming/{docker,api,spark,dashboard/{pages,utils,data},simulator}
+
+# ============================================
+# 1.  DOCKER COMPOSE
+# ============================================
+echo "🐳 Creating Docker Compose..."
+
+cat > streaming/docker/docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  # ZOOKEEPER
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # KAFKA
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # REDIS
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # KAFKA UI (Optional)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+
+volumes:
+  redis_data:
+EOF
+
+# ============================================
+# 2. FASTAPI - MAIN
+# ============================================
+echo "⚡ Creating FastAPI app..."
+
+cat > streaming/api/main. py << 'EOF'
+"""
+FastAPI Webhook Server
+Receives taxi trip data and produces to Kafka
+"""
+
+from fastapi import FastAPI, HTTPException, status
+from fastapi. middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import logging
+from datetime import datetime
+import uuid
+
+from schemas import TripEvent, TripResponse
+from kafka_producer import KafkaProducerClient
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+kafka_producer: KafkaProducerClient = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global kafka_producer
+    logger.info("🚀 Starting FastAPI server...")
+    kafka_producer = KafkaProducerClient()
+    kafka_producer.connect()
+    logger.info("✅ Connected to Kafka")
+    yield
+    logger.info("🛑 Shutting down...")
+    if kafka_producer:
+        kafka_producer.close()
+
+app = FastAPI(
+    title="NYC Taxi Real-Time API",
+    description="Webhook receiver for taxi trip events",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    return {"status": "healthy", "service": "NYC Taxi Real-Time API", "timestamp": datetime.utcnow(). isoformat()}
+
+@app.get("/health")
+async def health_check():
+    kafka_healthy = kafka_producer. is_connected() if kafka_producer else False
+    return {"status": "healthy" if kafka_healthy else "degraded", "kafka": "connected" if kafka_healthy else "disconnected"}
+
+@app.post("/api/v1/trips", response_model=TripResponse, status_code=status.HTTP_201_CREATED)
+async def receive_trip(trip: TripEvent):
+    try:
+        trip_id = str(uuid.uuid4())
+        message = trip.model_dump()
+        message['trip_id'] = trip_id
+        message['received_at'] = datetime.utcnow().isoformat()
+        message['tpep_pickup_datetime'] = trip.tpep_pickup_datetime.isoformat()
+        message['tpep_dropoff_datetime'] = trip.tpep_dropoff_datetime.isoformat()
+        
+        success = kafka_producer. send_trip(message)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Failed to produce to Kafka")
+        
+        logger. info(f"✅ Trip received: {trip_id}")
+        return TripResponse(status="success", message="Trip received", trip_id=trip_id, timestamp=datetime.utcnow())
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@app.post("/api/v1/trips/batch", status_code=status. HTTP_201_CREATED)
+async def receive_trips_batch(trips: list[TripEvent]):
+    results = []
+    for trip in trips:
+        try:
+            trip_id = str(uuid.uuid4())
+            message = trip.model_dump()
+            message['trip_id'] = trip_id
+            message['received_at'] = datetime.utcnow().isoformat()
+            message['tpep_pickup_datetime'] = trip.tpep_pickup_datetime. isoformat()
+            message['tpep_dropoff_datetime'] = trip. tpep_dropoff_datetime.isoformat()
+            success = kafka_producer. send_trip(message)
+            results.append({"trip_id": trip_id, "status": "success" if success else "failed"})
+        except Exception as e:
+            results.append({"trip_id": None, "status": "failed", "error": str(e)})
+    
+    successful = sum(1 for r in results if r['status'] == 'success')
+    return {"status": "completed", "total": len(trips), "successful": successful, "failed": len(trips) - successful}
+EOF
+
+# ============================================
+# 3. FASTAPI - SCHEMAS
+# ============================================
+cat > streaming/api/schemas.py << 'EOF'
+"""Pydantic models for request/response validation"""
+
+from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
+from typing import Optional
+
+class TripEvent(BaseModel):
+    VendorID: int = Field(..., ge=1, le=7)
+    tpep_pickup_datetime: datetime
+    tpep_dropoff_datetime: datetime
+    passenger_count: Optional[int] = Field(default=1, ge=0, le=9)
+    trip_distance: float = Field(..., ge=0)
+    RatecodeID: Optional[int] = Field(default=1, ge=1)
+    store_and_fwd_flag: Optional[str] = Field(default="N")
+    PULocationID: int = Field(..., ge=1, le=265)
+    DOLocationID: int = Field(..., ge=1, le=265)
+    payment_type: int = Field(..., ge=0, le=6)
+    fare_amount: float
+    extra: Optional[float] = Field(default=0. 0)
+    mta_tax: Optional[float] = Field(default=0. 5)
+    tip_amount: Optional[float] = Field(default=0.0, ge=0)
+    tolls_amount: Optional[float] = Field(default=0.0, ge=0)
+    improvement_surcharge: Optional[float] = Field(default=0.3)
+    total_amount: float
+    congestion_surcharge: Optional[float] = Field(default=0.0)
+    airport_fee: Optional[float] = Field(default=0.0)
+    cbd_congestion_fee: Optional[float] = Field(default=0. 0)
+    
+    @field_validator('store_and_fwd_flag')
+    @classmethod
+    def validate_store_fwd(cls, v):
+        if v not in ['Y', 'N', None]:
+            raise ValueError('must be Y or N')
+        return v or 'N'
+
+class TripResponse(BaseModel):
+    status: str
+    message: str
+    trip_id: str
+    timestamp: datetime
+EOF
+
+# ============================================
+# 4.  FASTAPI - KAFKA PRODUCER
+# ============================================
+cat > streaming/api/kafka_producer.py << 'EOF'
+"""Kafka Producer Client"""
+
+from kafka import KafkaProducer
+from kafka.errors import KafkaError
+import json
+import logging
+import os
+
+logger = logging.getLogger(__name__)
+
+class KafkaProducerClient:
+    def __init__(self):
+        self.bootstrap_servers = os. getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+        self.topic = os.getenv('KAFKA_TOPIC', 'nyc. taxi.trips. raw')
+        self. producer = None
+        self._connected = False
+    
+    def connect(self) -> bool:
+        try:
+            self. producer = KafkaProducer(
+                bootstrap_servers=self.bootstrap_servers. split(','),
+                value_serializer=lambda x: json.dumps(x).encode('utf-8'),
+                key_serializer=lambda x: x.encode('utf-8') if x else None,
+                acks='all',
+                retries=3,
+                max_block_ms=10000
+            )
+            self._connected = True
+            logger.info(f"✅ Connected to Kafka at {self.bootstrap_servers}")
+            return True
+        except KafkaError as e:
+            logger. error(f"❌ Failed to connect: {str(e)}")
+            self._connected = False
+            return False
+    
+    def is_connected(self) -> bool:
+        return self._connected and self.producer is not None
+    
+    def send_trip(self, trip_data: dict) -> bool:
+        if not self.is_connected():
+            if not self.connect():
+                return False
+        try:
+            key = str(trip_data. get('PULocationID', 'unknown'))
+            future = self.producer. send(topic=self.topic, key=key, value=trip_data)
+            future.get(timeout=10)
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to send: {str(e)}")
+            return False
+    
+    def close(self):
+        if self.producer:
+            self. producer.flush()
+            self. producer.close()
+            self._connected = False
+EOF
+
+# ============================================
+# 5.  FASTAPI - REQUIREMENTS
+# ============================================
+cat > streaming/api/requirements.txt << 'EOF'
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+kafka-python==2. 0.2
+pydantic==2. 5.3
+python-dotenv==1.0.0
+EOF
+
+# ============================================
+# 6.  SPARK STREAMING - FRAUD DETECTOR
+# ============================================
+echo "🔥 Creating Spark Streaming job..."
+
+cat > streaming/spark/fraud_detector.py << 'EOF'
+"""
+Spark Streaming Job for NYC Taxi Fraud Detection
+"""
+
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import (
+    col, from_json, when, hour, unix_timestamp, udf
+)
+from pyspark.sql.types import (
+    StructType, StructField, StringType, IntegerType,
+    DoubleType, TimestampType, ArrayType
+)
+import redis
+import json
+import logging
+import os
+from datetime import datetime
+
+logging.basicConfig(level=logging.INFO)
+logger = logging. getLogger(__name__)
+
+KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'nyc.taxi.trips. raw')
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os. getenv('REDIS_PORT', 6379))
+
+trip_schema = StructType([
+    StructField("trip_id", StringType(), True),
+    StructField("VendorID", IntegerType(), True),
+    StructField("tpep_pickup_datetime", StringType(), True),
+    StructField("tpep_dropoff_datetime", StringType(), True),
+    StructField("passenger_count", IntegerType(), True),
+    StructField("trip_distance", DoubleType(), True),
+    StructField("RatecodeID", IntegerType(), True),
+    StructField("store_and_fwd_flag", StringType(), True),
+    StructField("PULocationID", IntegerType(), True),
+    StructField("DOLocationID", IntegerType(), True),
+    StructField("payment_type", IntegerType(), True),
+    StructField("fare_amount", DoubleType(), True),
+    StructField("extra", DoubleType(), True),
+    StructField("mta_tax", DoubleType(), True),
+    StructField("tip_amount", DoubleType(), True),
+    StructField("tolls_amount", DoubleType(), True),
+    StructField("improvement_surcharge", DoubleType(), True),
+    StructField("total_amount", DoubleType(), True),
+    StructField("congestion_surcharge", DoubleType(), True),
+    StructField("airport_fee", DoubleType(), True),
+    StructField("cbd_congestion_fee", DoubleType(), True),
+    StructField("received_at", StringType(), True)
+])
+
+class RedisClient:
+    def __init__(self, host=REDIS_HOST, port=REDIS_PORT):
+        self.client = redis.Redis(host=host, port=port, decode_responses=True)
+    
+    def update_metrics(self, metrics: dict):
+        pipe = self.client. pipeline()
+        today = datetime.now(). strftime("%Y-%m-%d")
+        
+        if 'trip_count' in metrics:
+            pipe. incr(f"metrics:{today}:trips", metrics['trip_count'])
+        if 'total_revenue' in metrics:
+            pipe.incrbyfloat(f"metrics:{today}:revenue", metrics['total_revenue'])
+        if 'fraud_count' in metrics:
+            pipe. incr(f"metrics:{today}:fraud_alerts", metrics['fraud_count'])
+        if 'day_trips' in metrics:
+            pipe.incr(f"metrics:{today}:day_trips", metrics['day_trips'])
+        if 'night_trips' in metrics:
+            pipe.incr(f"metrics:{today}:night_trips", metrics['night_trips'])
+        
+        for key in ['trips', 'revenue', 'fraud_alerts', 'day_trips', 'night_trips']:
+            pipe.expire(f"metrics:{today}:{key}", 7 * 24 * 3600)
+        
+        pipe.execute()
+    
+    def add_fraud_alert(self, alert: dict):
+        today = datetime.now(). strftime("%Y-%m-%d")
+        self.client.lpush(f"fraud:alerts:{today}", json.dumps(alert))
+        self.client.ltrim(f"fraud:alerts:{today}", 0, 99)
+        self.client.expire(f"fraud:alerts:{today}", 7 * 24 * 3600)
+        
+        zone_id = alert.get('PULocationID', 0)
+        self.client.zincrby("fraud:by_zone", 1, str(zone_id))
+        
+        route = f"{alert.get('PULocationID', 0)}->{alert.get('DOLocationID', 0)}"
+        self.client.zincrby("fraud:by_route", 1, route)
+    
+    def update_hourly_stats(self, hour: int, count: int, revenue: float):
+        today = datetime. now().strftime("%Y-%m-%d")
+        self.client.hset(f"metrics:{today}:hourly:trips", str(hour), count)
+        self. client.hset(f"metrics:{today}:hourly:revenue", str(hour), revenue)
+
+def process_batch(batch_df, batch_id):
+    if batch_df.isEmpty():
+        return
+    
+    logger.info(f"📦 Processing batch {batch_id} with {batch_df.count()} records")
+    redis_client = RedisClient()
+    pdf = batch_df.toPandas()
+    
+    trip_count = len(pdf)
+    total_revenue = pdf['total_amount'].sum()
+    day_trips = pdf[~pdf['is_night']].shape[0]
+    night_trips = pdf[pdf['is_night']].shape[0]
+    fraud_df = pdf[pdf['fraud_score'] >= 50]
+    fraud_count = len(fraud_df)
+    
+    redis_client.update_metrics({
+        'trip_count': trip_count,
+        'total_revenue': total_revenue,
+        'fraud_count': fraud_count,
+        'day_trips': day_trips,
+        'night_trips': night_trips
+    })
+    
+    for _, row in fraud_df.iterrows():
+        alert = {
+            'trip_id': row['trip_id'],
+            'fraud_score': int(row['fraud_score']),
+            'fraud_flags': row['fraud_flags'],
+            'PULocationID': int(row['PULocationID']),
+            'DOLocationID': int(row['DOLocationID']),
+            'fare_amount': float(row['fare_amount']),
+            'is_night': bool(row['is_night']),
+            'timestamp': datetime.now().isoformat()
+        }
+        redis_client.add_fraud_alert(alert)
+    
+    if 'pickup_hour' in pdf.columns:
+        for hr, group in pdf.groupby('pickup_hour'):
+            redis_client.update_hourly_stats(int(hr), len(group), float(group['total_amount'].sum()))
+    
+    logger.info(f"✅ Batch {batch_id}: {trip_count} trips, ${total_revenue:.2f}, {fraud_count} fraud alerts")
+
+def main():
+    logger.info("🚀 Starting NYC Taxi Fraud Detector...")
+    
+    spark = (SparkSession.builder
+        .appName("NYC Taxi Fraud Detector")
+        . config("spark.jars. packages", "org. apache.spark:spark-sql-kafka-0-10_2.12:3.5. 0")
+        .config("spark.sql.streaming.checkpointLocation", "/tmp/checkpoint")
+        .getOrCreate())
+    
+    spark.sparkContext.setLogLevel("WARN")
+    
+    raw_stream = (spark. readStream. format("kafka")
+        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
+        .option("subscribe", KAFKA_TOPIC)
+        . option("startingOffsets", "latest")
+        .load())
+    
+    parsed_stream = (raw_stream
+        .selectExpr("CAST(value AS STRING) as json_str")
+        .select(from_json(col("json_str"), trip_schema). alias("data"))
+        .select("data.*"))
+    
+    enriched_stream = (parsed_stream
+        .withColumn("pickup_ts", col("tpep_pickup_datetime").cast(TimestampType()))
+        .withColumn("dropoff_ts", col("tpep_dropoff_datetime").cast(TimestampType()))
+        .withColumn("duration_min", (unix_timestamp("dropoff_ts") - unix_timestamp("pickup_ts")) / 60)
+        .withColumn("speed_mph", when(col("duration_min") > 0, (col("trip_distance") / col("duration_min")) * 60).otherwise(0))
+        .withColumn("pickup_hour", hour("pickup_ts"))
+        .withColumn("is_night", (hour("pickup_ts") >= 22) | (hour("pickup_ts") < 6))
+        .withColumn("fare_per_mile", when(col("trip_distance") > 0, col("fare_amount") / col("trip_distance")). otherwise(0))
+        .withColumn("tip_pct", when(col("fare_amount") > 0, (col("tip_amount") / col("fare_amount")) * 100).otherwise(0)))
+    
+    fraud_result_schema = StructType([
+        StructField("fraud_score", IntegerType(), True),
+        StructField("fraud_flags", ArrayType(StringType()), True)
+    ])
+    
+    @udf(fraud_result_schema)
+    def calculate_fraud_udf(trip_distance, fare_amount, tip_amount, passenger_count,
+                            payment_type, PULocationID, DOLocationID, RatecodeID,
+                            airport_fee, duration_min, speed_mph, is_night):
+        score, flags = 0, []
+        trip_distance = trip_distance or 0
+        fare_amount = fare_amount or 0
+        tip_amount = tip_amount or 0
+        passenger_count = passenger_count or 0
+        payment_type = payment_type or 0
+        PULocationID = PULocationID or 0
+        DOLocationID = DOLocationID or 0
+        RatecodeID = RatecodeID or 1
+        airport_fee = airport_fee or 0
+        duration_min = duration_min or 0
+        speed_mph = speed_mph or 0
+        is_night = is_night or False
+        
+        fare_per_mile = fare_amount / trip_distance if trip_distance > 0 else 0
+        tip_pct = (tip_amount / fare_amount * 100) if fare_amount > 0 else 0
+        
+        if speed_mph > 100: score += 30; flags.append("impossible_speed")
+        if speed_mph < 2 and duration_min > 10: score += 25; flags.append("stationary_trip")
+        if trip_distance == 0 and fare_amount > 0: score += 20; flags.append("zero_distance_with_fare")
+        if fare_per_mile > 10. 5: score += 20; flags.append("fare_too_high")
+        if fare_amount < 0: score += 15; flags.append("negative_fare")
+        if payment_type == 1:
+            if tip_amount > fare_amount: score += 25; flags.append("tip_exceeds_fare")
+            if tip_pct > 50: score += 15; flags.append("excessive_tip")
+        if PULocationID == DOLocationID and fare_amount > 5: score += 25; flags.append("same_location_high_fare")
+        if airport_fee > 0 and PULocationID not in [132, 138]: score += 20; flags.append("fake_airport_fee")
+        if passenger_count > 6: score += 15; flags.append("too_many_passengers")
+        if passenger_count == 0 and fare_amount > 0: score += 10; flags.append("zero_passengers")
+        if is_night:
+            score += 5
+            if payment_type == 2: score += 10; flags.append("night_cash_trip")
+            if tip_pct > 30: score += 10; flags.append("night_high_tip")
+        if RatecodeID == 2 and PULocationID != 132 and DOLocationID != 132: score += 20; flags.append("fake_jfk_rate")
+        if payment_type == 6: score += 20; flags.append("voided_trip")
+        if payment_type == 4: score += 10; flags.append("disputed_trip")
+        
+        return (min(score, 100), flags)
+    
+    fraud_stream = (enriched_stream
+        .withColumn("fraud_result", calculate_fraud_udf(
+            col("trip_distance"), col("fare_amount"), col("tip_amount"),
+            col("passenger_count"), col("payment_type"), col("PULocationID"),
+            col("DOLocationID"), col("RatecodeID"), col("airport_fee"),
+            col("duration_min"), col("speed_mph"), col("is_night")))
+        .withColumn("fraud_score", col("fraud_result.fraud_score"))
+        .withColumn("fraud_flags", col("fraud_result.fraud_flags"))
+        .drop("fraud_result"))
+    
+    query = (fraud_stream. writeStream
+        . foreachBatch(process_batch)
+        .outputMode("append")
+        .trigger(processingTime="5 seconds")
+        .start())
+    
+    logger.info("✅ Streaming started")
+    query.awaitTermination()
+
+if __name__ == "__main__":
+    main()
+EOF
+
+cat > streaming/spark/requirements.txt << 'EOF'
+pyspark==3. 5.0
+redis==5.0.1
+EOF
+
+# ============================================
+# 7. STREAMLIT DASHBOARD
+# ============================================
+echo "📊 Creating Streamlit Dashboard..."
+
+cat > streaming/dashboard/app.py << 'EOF'
+"""NYC Taxi Real-Time Dashboard"""
+
+import streamlit as st
+
+st.set_page_config(
+    page_title="NYC Taxi Real-Time Dashboard",
+    page_icon="🚕",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.title("🚕 NYC Taxi Real-Time Dashboard")
+st.markdown("---")
+
+st.markdown("""
+## Welcome to the NYC Taxi Real-Time Analytics Dashboard! 
+
+### 📊 Available Pages:
+- **📈 Live Overview** - Real-time trip metrics and KPIs
+- **🕵️ Fraud Detection** - Fraud alerts and analysis
+
+### 🚀 Getting Started:
+1.  Make sure all services are running (Kafka, Redis, Spark)
+2. Start sending trips via the API
+3. Watch the metrics update in real-time! 
+
+Select a page from the sidebar to begin. 
+""")
+
+st.sidebar.success("Select a page above.")
+EOF
+
+# Live Overview Page
+cat > streaming/dashboard/pages/1_📊_Live_Overview. py << 'EOF'
+"""Live Overview Page"""
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from datetime import datetime
+import time
+import sys
+sys.path.append('. .')
+from utils. redis_client import RedisClient
+from utils.zone_lookup import ZoneLookup
+
+st.set_page_config(page_title="Live Overview", page_icon="📊", layout="wide")
+st.title("📊 Live Overview")
+
+@st.cache_resource
+def get_redis_client():
+    return RedisClient()
+
+@st.cache_resource
+def get_zone_lookup():
+    return ZoneLookup()
+
+redis_client = get_redis_client()
+zone_lookup = get_zone_lookup()
+
+# Auto-refresh
+refresh_rate = st.sidebar.slider("Refresh Rate (seconds)", 5, 60, 10)
+auto_refresh = st. sidebar.checkbox("Auto Refresh", value=True)
+
+placeholder = st.empty()
+
+def render_dashboard():
+    metrics = redis_client. get_today_metrics()
+    hourly = redis_client.get_hourly_stats()
+    
+    with placeholder.container():
+        # KPI Cards
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric("🚕 Today's Trips", f"{metrics.get('trips', 0):,}")
+        with col2:
+            st.metric("💰 Revenue", f"${metrics.get('revenue', 0):,.2f}")
+        with col3:
+            st.metric("⚠️ Fraud Alerts", metrics.get('fraud_alerts', 0))
+        with col4:
+            st. metric("☀️ Day Trips", metrics.get('day_trips', 0))
+        with col5:
+            st. metric("🌙 Night Trips", metrics.get('night_trips', 0))
+        
+        st.markdown("---")
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📈 Trips by Hour")
+            if hourly['trips']:
+                df = pd.DataFrame(list(hourly['trips'].items()), columns=['Hour', 'Trips'])
+                df['Hour'] = df['Hour'].astype(int)
+                df = df.sort_values('Hour')
+                fig = px.bar(df, x='Hour', y='Trips', color='Trips', color_continuous_scale='Blues')
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No hourly data yet")
+        
+        with col2:
+            st.subheader("🌓 Day vs Night")
+            day = metrics.get('day_trips', 0)
+            night = metrics.get('night_trips', 0)
+            if day + night > 0:
+                fig = go.Figure(data=[go. Pie(labels=['Day ☀️', 'Night 🌙'], values=[day, night], hole=. 4)])
+                st. plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No data yet")
+        
+        st.caption(f"Last updated: {datetime.now(). strftime('%Y-%m-%d %H:%M:%S')}")
+
+render_dashboard()
+
+if auto_refresh:
+    time.sleep(refresh_rate)
+    st.rerun()
+EOF
+
+# Fraud Detection Page
+cat > streaming/dashboard/pages/2_🕵️_Fraud_Detection.py << 'EOF'
+"""Fraud Detection Page"""
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from datetime import datetime
+import time
+import sys
+sys.path.append('..')
+from utils.redis_client import RedisClient
+from utils.zone_lookup import ZoneLookup
+
+st.set_page_config(page_title="Fraud Detection", page_icon="🕵️", layout="wide")
+st.title("🕵️ Fraud Detection")
+
+@st.cache_resource
+def get_redis_client():
+    return RedisClient()
+
+@st.cache_resource
+def get_zone_lookup():
+    return ZoneLookup()
+
+redis_client = get_redis_client()
+zone_lookup = get_zone_lookup()
+
+refresh_rate = st. sidebar.slider("Refresh Rate (seconds)", 5, 60, 10)
+auto_refresh = st.sidebar.checkbox("Auto Refresh", value=True)
+min_score = st.sidebar. slider("Min Fraud Score", 0, 100, 50)
+
+placeholder = st.empty()
+
+def render_fraud_dashboard():
+    alerts = redis_client. get_fraud_alerts()
+    top_zones = redis_client. get_top_fraud_zones(10)
+    top_routes = redis_client. get_top_fraud_routes(10)
+    
+    with placeholder.container():
+        # Summary
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("⚠️ Total Alerts Today", len(alerts))
+        with col2:
+            high_risk = sum(1 for a in alerts if a. get('fraud_score', 0) >= 70)
+            st.metric("🔴 High Risk (70+)", high_risk)
+        with col3:
+            night_fraud = sum(1 for a in alerts if a.get('is_night', False))
+            st.metric("🌙 Night Fraud", night_fraud)
+        
+        st.markdown("---")
+        
+        # Tables
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🔥 Top Fraud Zones")
+            if top_zones:
+                df = pd. DataFrame(top_zones, columns=['Zone ID', 'Count'])
+                df['Zone Name'] = df['Zone ID'].apply(lambda x: zone_lookup.get_zone_name(int(x)))
+                st.dataframe(df[['Zone Name', 'Count']], use_container_width=True)
+            else:
+                st.info("No fraud zones yet")
+        
+        with col2:
+            st.subheader("🛤️ Top Fraud Routes")
+            if top_routes:
+                df = pd. DataFrame(top_routes, columns=['Route', 'Count'])
+                st.dataframe(df, use_container_width=True)
+            else:
+                st.info("No fraud routes yet")
+        
+        st.markdown("---")
+        st.subheader("📋 Recent Fraud Alerts")
+        
+        if alerts:
+            filtered = [a for a in alerts if a.get('fraud_score', 0) >= min_score]
+            if filtered:
+                df = pd.DataFrame(filtered)
+                df['pickup_zone'] = df['PULocationID'].apply(lambda x: zone_lookup.get_zone_name(x))
+                df['dropoff_zone'] = df['DOLocationID'].apply(lambda x: zone_lookup.get_zone_name(x))
+                st.dataframe(df[['timestamp', 'fraud_score', 'fraud_flags', 'pickup_zone', 'dropoff_zone', 'fare_amount', 'is_night']], use_container_width=True)
+            else:
+                st. info(f"No alerts with score >= {min_score}")
+        else:
+            st.info("No fraud alerts yet")
+        
+        st. caption(f"Last updated: {datetime. now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+render_fraud_dashboard()
+
+if auto_refresh:
+    time. sleep(refresh_rate)
+    st. rerun()
+EOF
+
+# Utils - Redis Client
+cat > streaming/dashboard/utils/__init__.py << 'EOF'
+EOF
+
+cat > streaming/dashboard/utils/redis_client.py << 'EOF'
+"""Redis Client for Dashboard"""
+
+import redis
+import json
+import os
+from datetime import datetime
+
+class RedisClient:
+    def __init__(self):
+        self.client = redis.Redis(
+            host=os. getenv('REDIS_HOST', 'localhost'),
+            port=int(os.getenv('REDIS_PORT', 6379)),
+            decode_responses=True
+        )
+    
+    def get_today_metrics(self) -> dict:
+        today = datetime.now(). strftime("%Y-%m-%d")
+        return {
+            'trips': int(self.client. get(f"metrics:{today}:trips") or 0),
+            'revenue': float(self.client. get(f"metrics:{today}:revenue") or 0),
+            'fraud_alerts': int(self.client.get(f"metrics:{today}:fraud_alerts") or 0),
+            'day_trips': int(self.client.get(f"metrics:{today}:day_trips") or 0),
+            'night_trips': int(self.client.get(f"metrics:{today}:night_trips") or 0)
+        }
+    
+    def get_hourly_stats(self) -> dict:
+        today = datetime.now().strftime("%Y-%m-%d")
+        return {
+            'trips': self.client.hgetall(f"metrics:{today}:hourly:trips"),
+            'revenue': self.client.hgetall(f"metrics:{today}:hourly:revenue")
+        }
+    
+    def get_fraud_alerts(self, limit=100) -> list:
+        today = datetime. now().strftime("%Y-%m-%d")
+        alerts = self.client. lrange(f"fraud:alerts:{today}", 0, limit - 1)
+        return [json.loads(a) for a in alerts]
+    
+    def get_top_fraud_zones(self, limit=10) -> list:
+        return self.client.zrevrange("fraud:by_zone", 0, limit - 1, withscores=True)
+    
+    def get_top_fraud_routes(self, limit=10) -> list:
+        return self.client. zrevrange("fraud:by_route", 0, limit - 1, withscores=True)
+EOF
+
+# Utils - Zone Lookup
+cat > streaming/dashboard/utils/zone_lookup.py << 'EOF'
+"""Zone Lookup Utility"""
+
+import pandas as pd
+import os
+
+class ZoneLookup:
+    def __init__(self):
+        data_path = os.path.join(os. path.dirname(__file__), '..', 'data', 'taxi_zone_lookup. csv')
+        try:
+            self. df = pd.read_csv(data_path)
+            self.zones = dict(zip(self. df['LocationID'], self.df['Zone']))
+            self.boroughs = dict(zip(self.df['LocationID'], self.df['Borough']))
+        except:
+            self.zones = {}
+            self.boroughs = {}
+    
+    def get_zone_name(self, location_id: int) -> str:
+        return self.zones.get(location_id, f"Zone {location_id}")
+    
+    def get_borough(self, location_id: int) -> str:
+        return self.boroughs.get(location_id, "Unknown")
+EOF
+
+cat > streaming/dashboard/requirements.txt << 'EOF'
+streamlit==1.31.0
+pandas==2.2.0
+plotly==5.18.0
+redis==5.0.1
+folium==0.15.1
+streamlit-folium==0.17.0
+EOF
+
+# ============================================
+# 8. SIMULATOR
+# ============================================
+echo "🎮 Creating Simulator..."
+
+cat > streaming/simulator/send_trips.py << 'EOF'
+"""Trip Simulator - Sends sample trips to the API"""
+
+import requests
+import random
+import time
+import argparse
+from datetime import datetime, timedelta
+
+API_URL = "http://localhost:8000/api/v1/trips"
+
+ZONES = list(range(1, 266))
+MANHATTAN_ZONES = [4, 12, 13, 24, 41, 42, 43, 45, 48, 50, 68, 79, 87, 88, 90, 100, 107, 113, 114, 125, 137, 140, 141, 142, 143, 144, 148, 151, 158, 161, 162, 163, 164, 170, 186, 209, 211, 224, 229, 230, 231, 232, 233, 234, 236, 237, 238, 239, 246, 249, 261, 262, 263]
+
+def generate_trip():
+    pickup_time = datetime.now() - timedelta(minutes=random.randint(0, 30))
+    duration = random.randint(5, 45)
+    dropoff_time = pickup_time + timedelta(minutes=duration)
+    distance = random.uniform(0.5, 15)
+    fare = 2.5 + (distance * 2.5) + (duration * 0.35)
+    tip = fare * random.uniform(0, 0.3) if random.random() > 0. 3 else 0
+    
+    return {
+        "VendorID": random.choice([1, 2]),
+        "tpep_pickup_datetime": pickup_time. isoformat(),
+        "tpep_dropoff_datetime": dropoff_time. isoformat(),
+        "passenger_count": random. randint(1, 4),
+        "trip_distance": round(distance, 2),
+        "RatecodeID": 1,
+        "store_and_fwd_flag": "N",
+        "PULocationID": random.choice(MANHATTAN_ZONES),
+        "DOLocationID": random.choice(MANHATTAN_ZONES),
+        "payment_type": random.choice([1, 1, 1, 2]),
+        "fare_amount": round(fare, 2),
+        "extra": 0. 5,
+        "mta_tax": 0.5,
+        "tip_amount": round(tip, 2),
+        "tolls_amount": 0,
+        "improvement_surcharge": 0. 3,
+        "total_amount": round(fare + tip + 1.3, 2),
+        "congestion_surcharge": 2.5,
+        "airport_fee": 0,
+        "cbd_congestion_fee": 0
+    }
+
+def generate_fraud_trip():
+    trip = generate_trip()
+    fraud_type = random.choice(['speed', 'fare', 'tip', 'location'])
+    
+    if fraud_type == 'speed':
+        trip['trip_distance'] = 50
+        pickup = datetime.fromisoformat(trip['tpep_pickup_datetime'])
+        trip['tpep_dropoff_datetime'] = (pickup + timedelta(minutes=5)).isoformat()
+    elif fraud_type == 'fare':
+        trip['fare_amount'] = trip['trip_distance'] * 15
+        trip['total_amount'] = trip['fare_amount'] + 5
+    elif fraud_type == 'tip':
+        trip['tip_amount'] = trip['fare_amount'] * 2
+        trip['total_amount'] = trip['fare_amount'] + trip['tip_amount']
+    elif fraud_type == 'location':
+        trip['PULocationID'] = trip['DOLocationID']
+        trip['fare_amount'] = 50
+    
+    return trip
+
+def main():
+    parser = argparse.ArgumentParser(description='NYC Taxi Trip Simulator')
+    parser.add_argument('--api-url', default=API_URL, help='API URL')
+    parser.add_argument('--rate', type=float, default=1.0, help='Trips per second')
+    parser. add_argument('--fraud-rate', type=float, default=0.1, help='Fraud trip rate')
+    parser.add_argument('--count', type=int, default=0, help='Number of trips (0=infinite)')
+    args = parser.parse_args()
+    
+    print(f"🚀 Starting simulator...")
+    print(f"📡 API URL: {args.api_url}")
+    print(f"⏱️ Rate: {args.rate} trips/sec")
+    print(f"🕵️ Fraud rate: {args. fraud_rate * 100}%")
+    
+    sent = 0
+    while args.count == 0 or sent < args.count:
+        try:
+            if random.random() < args.fraud_rate:
+                trip = generate_fraud_trip()
+                print(f"🔴 Sending FRAUD trip...")
+            else:
+                trip = generate_trip()
+                print(f"🟢 Sending normal trip...")
+            
+            response = requests. post(args.api_url, json=trip, timeout=10)
+            
+            if response.status_code == 201:
+                data = response.json()
+                print(f"✅ Trip sent: {data. get('trip_id', 'unknown')}")
+            else:
+                print(f"❌ Error: {response.status_code} - {response.text}")
+            
+            sent += 1
+            time.sleep(1 / args.rate)
+            
+        except KeyboardInterrupt:
+            print("\n🛑 Stopped by user")
+            break
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            time.sleep(1)
+    
+    print(f"📊 Total trips sent: {sent}")
+
+if __name__ == "__main__":
+    main()
+EOF
+
+cat > streaming/simulator/requirements.txt << 'EOF'
+requests==2.31.0
+EOF
+
+# ============================================
+# 9. README
+# ============================================
+echo "📝 Creating README..."
+
+cat > streaming/README.md << 'EOF'
+# 🚕 NYC Taxi Real-Time Streaming Pipeline
+
+Real-time taxi trip analytics with fraud detection. 
+
+## 🏗️ Architecture

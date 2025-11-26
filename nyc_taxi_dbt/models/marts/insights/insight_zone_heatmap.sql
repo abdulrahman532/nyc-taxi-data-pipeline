@@ -2,10 +2,10 @@
 
 with pickup_stats as (
     select pickup_location_id as location_id, count(*) as pickup_count, sum(total_amount) as pickup_revenue, avg(total_amount) as avg_fare, avg(tip_percentage) as avg_tip_pct
-    from {{ ref('fct_trips') }} group by 1
+    from {{ ref('obt_trips') }} group by 1
 ),
 dropoff_stats as (
-    select dropoff_location_id as location_id, count(*) as dropoff_count from {{ ref('fct_trips') }} group by 1
+    select dropoff_location_id as location_id, count(*) as dropoff_count from {{ ref('obt_trips') }} group by 1
 )
 select
     z.location_id, z.borough, z.zone_name, z.zone_category, z.is_airport,

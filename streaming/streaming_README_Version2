@@ -1,0 +1,86 @@
+# 🚕 NYC Taxi Real-Time Streaming Pipeline
+
+Real-time taxi trip analytics with fraud detection. 
+
+## 🏗️ Architecture
+
+```
+Taxi App → ngrok → FastAPI → Kafka → Spark Streaming → Redis → Streamlit
+```
+
+## 📁 Structure
+
+```
+streaming/
+├── docker/          # Kafka + Redis
+├── api/             # FastAPI webhook
+├── spark/           # Fraud detection
+├── dashboard/       # Streamlit UI
+├── simulator/       # Test data generator
+└── README.md
+```
+
+## 🚀 Quick Start
+
+### 1. Start Infrastructure
+```bash
+cd streaming/docker
+docker-compose up -d
+```
+
+### 2. Start FastAPI
+```bash
+cd streaming/api
+pip install -r requirements. txt
+uvicorn main:app --host 0.0. 0.0 --port 8000 --reload
+```
+
+### 3. Start ngrok (for external access)
+```bash
+ngrok http 8000
+```
+
+### 4. Start Spark Streaming
+```bash
+cd streaming/spark
+pip install -r requirements. txt
+spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 fraud_detector.py
+```
+
+### 5. Start Dashboard
+```bash
+cd streaming/dashboard
+pip install -r requirements. txt
+streamlit run app.py
+```
+
+### 6. Test with Simulator
+```bash
+cd streaming/simulator
+pip install -r requirements. txt
+python send_trips.py --api-url http://localhost:8000/api/v1/trips
+```
+
+## 📡 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | Health check |
+| GET | `/health` | Detailed health |
+| POST | `/api/v1/trips` | Submit single trip |
+| POST | `/api/v1/trips/batch` | Submit multiple trips |
+
+## 🕵️ Fraud Detection Rules
+
+- Speed > 100 mph (impossible)
+- Zero distance with fare
+- Tip > Fare
+- Same pickup/dropoff with high fare
+- Night + Cash + High fare
+- Fake airport fees
+- And more...
+
+## 📊 Dashboard Pages
+
+1. **📈 Live Overview** - Real-time KPIs
+2.  **🕵️ Fraud Detection** - Alerts and analysis
