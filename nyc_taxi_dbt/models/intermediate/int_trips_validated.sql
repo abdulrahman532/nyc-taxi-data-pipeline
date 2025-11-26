@@ -1,8 +1,48 @@
 {{ config(materialized='view') }}
 
+-- Intermediate: Clean and transform data
+-- Convert timestamps from microseconds to proper TIMESTAMP
+
 with staged as (
     select * from {{ ref('stg_trips') }}
 ),
+
+-- Step 1: Convert timestamps
+-- pickup_datetime_raw is corrupted (shows year 51003759)
+-- dropoff_datetime_raw is NUMBER (microseconds) - this is correct
+-- We'll extract the numeric part from pickup and convert both
+with_timestamps as (
+    select
+        trip_id,
+        vendor_id,
+        pickup_location_id,
+        dropoff_location_id,
+        rate_code_id,
+        payment_type_id,
+        -- Extract epoch from corrupted timestamp, divide to get real timestamp
+        -- The pickup was wrongly interpreted, extract its epoch_nanosecond
+        to_timestamp(date_part(epoch_nanosecond, pickup_datetime_raw) / 1000000000) as pickup_datetime,
+        -- dropoff is stored as microseconds number
+        to_timestamp(dropoff_datetime_raw / 1000000) as dropoff_datetime,
+        passenger_count,
+        trip_distance,
+        store_and_fwd_flag,
+        fare_amount,
+        extra,
+        mta_tax,
+        tip_amount,
+        tolls_amount,
+        improvement_surcharge,
+        total_amount,
+        congestion_surcharge,
+        airport_fee,
+        cbd_congestion_fee
+    from staged
+    -- Filter: dropoff must be valid microseconds (2009-2030)
+    where dropoff_datetime_raw between 1230768000000000 and 1893456000000000
+),
+
+-- Step 2: Add calculated fields
 with_calculations as (
     select
         *,
@@ -15,14 +55,26 @@ with_calculations as (
         month(pickup_datetime) as pickup_month_num,
         dayofweek(pickup_datetime) as pickup_day_of_week,
         hour(pickup_datetime) as pickup_hour,
-        case when hour(pickup_datetime) between 6 and 9 then 'Morning Rush' when hour(pickup_datetime) between 10 and 15 then 'Midday' when hour(pickup_datetime) between 16 and 19 then 'Evening Rush' when hour(pickup_datetime) between 20 and 23 then 'Night' else 'Late Night' end as time_of_day,
+        case 
+            when hour(pickup_datetime) between 6 and 9 then 'Morning Rush' 
+            when hour(pickup_datetime) between 10 and 15 then 'Midday' 
+            when hour(pickup_datetime) between 16 and 19 then 'Evening Rush' 
+            when hour(pickup_datetime) between 20 and 23 then 'Night' 
+            else 'Late Night' 
+        end as time_of_day,
         case when dayofweek(pickup_datetime) in (0, 6) then 'Weekend' else 'Weekday' end as day_type,
         case when trip_distance > 0 then fare_amount / trip_distance else null end as fare_per_mile,
-        case when datediff('minute', pickup_datetime, dropoff_datetime) > 0 then trip_distance / (datediff('minute', pickup_datetime, dropoff_datetime) / 60.0) else null end as speed_mph,
-        case when fare_amount > 0 and payment_type_id = 1 then (tip_amount / fare_amount) * 100 else null end as tip_percentage,
+        case when datediff('minute', pickup_datetime, dropoff_datetime) > 0 
+             then trip_distance / (datediff('minute', pickup_datetime, dropoff_datetime) / 60.0) 
+             else null end as speed_mph,
+        case when fare_amount > 0 and payment_type_id = 1 
+             then (tip_amount / fare_amount) * 100 
+             else null end as tip_percentage,
         tolls_amount > 0 as has_tolls
-    from staged
+    from with_timestamps
 ),
+
+-- Step 3: Add data quality flags
 with_flags as (
     select
         *,
@@ -40,5 +92,17 @@ with_flags as (
         tolls_amount > 20 as is_high_tolls
     from with_calculations
 )
+
+-- Step 4: Filter invalid records
 select * from with_flags
-where pickup_datetime is not null and dropoff_datetime is not null and dropoff_datetime > pickup_datetime and trip_duration_minutes > 0 and trip_duration_minutes <= 1440 and (speed_mph is null or speed_mph <= 100) and pickup_location_id between 1 and 265 and dropoff_location_id between 1 and 265 and pickup_datetime >= '2013-01-01' and pickup_datetime < current_date()
+where 
+    pickup_datetime is not null 
+    and dropoff_datetime is not null 
+    and dropoff_datetime > pickup_datetime 
+    and trip_duration_minutes > 0 
+    and trip_duration_minutes <= 1440 
+    and (speed_mph is null or speed_mph <= 100) 
+    and pickup_location_id between 1 and 265 
+    and dropoff_location_id between 1 and 265 
+    and pickup_datetime >= '2013-01-01' 
+    and pickup_datetime < current_date()
