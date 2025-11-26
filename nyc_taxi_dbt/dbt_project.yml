@@ -1,5 +1,5 @@
 name: 'nyc_taxi_dbt'
-version: '1.0. 0'
+version: '1.0.0'
 config-version: 2
 profile: 'nyc_taxi'
 model-paths: ["models"]

@@ -1,8 +1,18 @@
 {{ config(materialized='table') }}
 
+with monthly as (
+    select 
+        *,
+        date_trunc('quarter', pickup_month)::date as pickup_quarter,
+        quarter(pickup_month) as quarter_num
+    from {{ ref('agg_monthly') }}
+)
+
 select
-    pickup_quarter, pickup_year, pickup_quarter_num,
-    pickup_year || '-Q' || pickup_quarter_num as quarter_label,
+    pickup_quarter,
+    pickup_year,
+    quarter_num as pickup_quarter_num,
+    pickup_year || '-Q' || quarter_num as quarter_label,
     sum(total_trips) as total_trips,
     sum(total_revenue) as total_revenue,
     sum(fare_revenue) as fare_revenue,
@@ -15,6 +25,6 @@ select
     round(avg(manhattan_pct), 2) as manhattan_pct,
     lag(sum(total_trips)) over (order by pickup_quarter) as prev_quarter_trips,
     round((sum(total_trips) - lag(sum(total_trips)) over (order by pickup_quarter)) * 100.0 / nullif(lag(sum(total_trips)) over (order by pickup_quarter), 0), 2) as trips_qoq_pct
-from {{ ref('agg_monthly') }}
-group by 1, 2, 3, 4
-order by 1
+from monthly
+group by pickup_quarter, pickup_year, quarter_num, quarter_label
+order by pickup_quarter
