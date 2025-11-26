@@ -8,14 +8,14 @@ import time
 import sys
 import os
 
-sys. path.insert(0, os.path. dirname(os.path.dirname(os. path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.redis_client import RedisClient
 from utils.zone_lookup import ZoneLookup
 
-st. set_page_config(page_title="Fraud Detection", page_icon="🕵️", layout="wide")
-st. title("🕵️ Fraud Detection")
+st.set_page_config(page_title="Fraud Detection", page_icon="🕵️", layout="wide")
+st.title("🕵️ Fraud Detection")
 
-@st. cache_resource
+@st.cache_resource
 def get_redis_client():
     return RedisClient()
 
@@ -26,15 +26,15 @@ def get_zone_lookup():
 redis_client = get_redis_client()
 zone_lookup = get_zone_lookup()
 
-refresh_rate = st. sidebar.slider("Refresh Rate (seconds)", 5, 60, 10)
+refresh_rate = st.sidebar.slider("Refresh Rate (seconds)", 5, 60, 10)
 auto_refresh = st.sidebar.checkbox("Auto Refresh", value=True)
-min_score = st.sidebar. slider("Min Fraud Score", 0, 100, 50)
+min_score = st.sidebar.slider("Min Fraud Score", 0, 100, 50)
 
 placeholder = st.empty()
 
 def render_fraud_dashboard():
-    alerts = redis_client. get_fraud_alerts()
-    top_zones = redis_client. get_top_fraud_zones(10)
+    alerts = redis_client.get_fraud_alerts()
+    top_zones = redis_client.get_top_fraud_zones(10)
     top_routes = redis_client.get_top_fraud_routes(10)
     
     with placeholder.container():
@@ -42,8 +42,8 @@ def render_fraud_dashboard():
         with col1:
             st.metric("⚠️ Total Alerts Today", len(alerts))
         with col2:
-            high_risk = sum(1 for a in alerts if a. get('fraud_score', 0) >= 70)
-            st. metric("🔴 High Risk (70+)", high_risk)
+            high_risk = sum(1 for a in alerts if a.get('fraud_score', 0) >= 70)
+            st.metric("🔴 High Risk (70+)", high_risk)
         with col3:
             night_fraud = sum(1 for a in alerts if a.get('is_night', False))
             st.metric("🌙 Night Fraud", night_fraud)
@@ -55,7 +55,7 @@ def render_fraud_dashboard():
         with col1:
             st.subheader("🔥 Top Fraud Zones")
             if top_zones:
-                df = pd. DataFrame(top_zones, columns=['Zone ID', 'Count'])
+                df = pd.DataFrame(top_zones, columns=['Zone ID', 'Count'])
                 df['Zone Name'] = df['Zone ID'].apply(lambda x: zone_lookup.get_zone_name(int(x)))
                 st.dataframe(df[['Zone Name', 'Count']], use_container_width=True)
             else:
@@ -64,7 +64,7 @@ def render_fraud_dashboard():
         with col2:
             st.subheader("🛤️ Top Fraud Routes")
             if top_routes:
-                df = pd. DataFrame(top_routes, columns=['Route', 'Count'])
+                df = pd.DataFrame(top_routes, columns=['Route', 'Count'])
                 st.dataframe(df, use_container_width=True)
             else:
                 st.info("No fraud routes yet")
@@ -85,7 +85,7 @@ def render_fraud_dashboard():
             else:
                 st.info(f"No alerts with score >= {min_score}")
         else:
-            st. info("No fraud alerts yet")
+            st.info("No fraud alerts yet")
         
         st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 

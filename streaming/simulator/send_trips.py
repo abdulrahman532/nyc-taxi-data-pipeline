@@ -18,14 +18,14 @@ def generate_trip():
     duration = random.randint(5, 45)
     dropoff_time = pickup_time + timedelta(minutes=duration)
     distance = random.uniform(0.5, 15)
-    fare = 2. 5 + (distance * 2.5) + (duration * 0.35)
+    fare = 2.5 + (distance * 2.5) + (duration * 0.35)
     tip = fare * random.uniform(0, 0.3) if random.random() > 0.3 else 0
     
     return {
         "VendorID": random.choice([1, 2]),
-        "tpep_pickup_datetime": pickup_time. isoformat(),
-        "tpep_dropoff_datetime": dropoff_time. isoformat(),
-        "passenger_count": random. randint(1, 4),
+        "tpep_pickup_datetime": pickup_time.isoformat(),
+        "tpep_dropoff_datetime": dropoff_time.isoformat(),
+        "passenger_count": random.randint(1, 4),
         "trip_distance": round(distance, 2),
         "RatecodeID": 1,
         "store_and_fwd_flag": "N",
@@ -33,11 +33,11 @@ def generate_trip():
         "DOLocationID": random.choice(MANHATTAN_ZONES),
         "payment_type": random.choice([1, 1, 1, 2]),
         "fare_amount": round(fare, 2),
-        "extra": 0. 5,
+        "extra": 0.5,
         "mta_tax": 0.5,
         "tip_amount": round(tip, 2),
         "tolls_amount": 0,
-        "improvement_surcharge": 0. 3,
+        "improvement_surcharge": 0.3,
         "total_amount": round(fare + tip + 1.3, 2),
         "congestion_surcharge": 2.5,
         "airport_fee": 0,
@@ -66,15 +66,15 @@ def generate_fraud_trip():
 
 def main():
     parser = argparse.ArgumentParser(description='NYC Taxi Trip Simulator')
-    parser. add_argument('--api-url', default=API_URL, help='API URL')
-    parser. add_argument('--rate', type=float, default=1.0, help='Trips per second')
+    parser.add_argument('--api-url', default=API_URL, help='API URL')
+    parser.add_argument('--rate', type=float, default=1.0, help='Trips per second')
     parser.add_argument('--fraud-rate', type=float, default=0.1, help='Fraud trip rate (0-1)')
     parser.add_argument('--count', type=int, default=0, help='Number of trips (0=infinite)')
     args = parser.parse_args()
     
     print(f"🚀 Starting simulator...")
     print(f"📡 API URL: {args.api_url}")
-    print(f"⏱️  Rate: {args. rate} trips/sec")
+    print(f"⏱️  Rate: {args.rate} trips/sec")
     print(f"🕵️ Fraud rate: {args.fraud_rate * 100}%")
     print("")
     
@@ -92,7 +92,7 @@ def main():
             
             if response.status_code == 201:
                 data = response.json()
-                print(f"✅ Trip sent: {data. get('trip_id', 'unknown')}")
+                print(f"✅ Trip sent: {data.get('trip_id', 'unknown')}")
             else:
                 print(f"❌ Error: {response.status_code} - {response.text}")
             

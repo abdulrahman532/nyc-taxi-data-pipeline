@@ -4,7 +4,7 @@ Receives taxi trip data and produces to Kafka
 """
 
 from fastapi import FastAPI, HTTPException, status
-from fastapi. middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 from datetime import datetime
@@ -55,7 +55,7 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    kafka_healthy = kafka_producer. is_connected() if kafka_producer else False
+    kafka_healthy = kafka_producer.is_connected() if kafka_producer else False
     return {
         "status": "healthy" if kafka_healthy else "degraded",
         "kafka": "connected" if kafka_healthy else "disconnected"
@@ -71,7 +71,7 @@ async def receive_trip(trip: TripEvent):
         message['tpep_pickup_datetime'] = trip.tpep_pickup_datetime.isoformat()
         message['tpep_dropoff_datetime'] = trip.tpep_dropoff_datetime.isoformat()
         
-        success = kafka_producer. send_trip(message)
+        success = kafka_producer.send_trip(message)
         if not success:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -90,11 +90,11 @@ async def receive_trip(trip: TripEvent):
     except Exception as e:
         logger.error(f"❌ Error: {str(e)}")
         raise HTTPException(
-            status_code=status. HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
 
-@app. post("/api/v1/trips/batch", status_code=status. HTTP_201_CREATED)
+@app.post("/api/v1/trips/batch", status_code=status.HTTP_201_CREATED)
 async def receive_trips_batch(trips: list[TripEvent]):
     results = []
     for trip in trips:
@@ -104,8 +104,8 @@ async def receive_trips_batch(trips: list[TripEvent]):
             message['trip_id'] = trip_id
             message['received_at'] = datetime.utcnow().isoformat()
             message['tpep_pickup_datetime'] = trip.tpep_pickup_datetime.isoformat()
-            message['tpep_dropoff_datetime'] = trip.tpep_dropoff_datetime. isoformat()
-            success = kafka_producer. send_trip(message)
+            message['tpep_dropoff_datetime'] = trip.tpep_dropoff_datetime.isoformat()
+            success = kafka_producer.send_trip(message)
             results.append({"trip_id": trip_id, "status": "success" if success else "failed"})
         except Exception as e:
             results.append({"trip_id": None, "status": "failed", "error": str(e)})

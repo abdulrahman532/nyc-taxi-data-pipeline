@@ -14,25 +14,25 @@ class RedisClient:
         )
     
     def get_today_metrics(self) -> dict:
-        today = datetime.now(). strftime("%Y-%m-%d")
+        today = datetime.now().strftime("%Y-%m-%d")
         return {
-            'trips': int(self.client. get(f"metrics:{today}:trips") or 0),
-            'revenue': float(self.client. get(f"metrics:{today}:revenue") or 0),
+            'trips': int(self.client.get(f"metrics:{today}:trips") or 0),
+            'revenue': float(self.client.get(f"metrics:{today}:revenue") or 0),
             'fraud_alerts': int(self.client.get(f"metrics:{today}:fraud_alerts") or 0),
             'day_trips': int(self.client.get(f"metrics:{today}:day_trips") or 0),
             'night_trips': int(self.client.get(f"metrics:{today}:night_trips") or 0)
         }
     
     def get_hourly_stats(self) -> dict:
-        today = datetime.now(). strftime("%Y-%m-%d")
+        today = datetime.now().strftime("%Y-%m-%d")
         return {
             'trips': self.client.hgetall(f"metrics:{today}:hourly:trips"),
             'revenue': self.client.hgetall(f"metrics:{today}:hourly:revenue")
         }
     
     def get_fraud_alerts(self, limit=100) -> list:
-        today = datetime. now().strftime("%Y-%m-%d")
-        alerts = self.client. lrange(f"fraud:alerts:{today}", 0, limit - 1)
+        today = datetime.now().strftime("%Y-%m-%d")
+        alerts = self.client.lrange(f"fraud:alerts:{today}", 0, limit - 1)
         return [json.loads(a) for a in alerts]
     
     def get_top_fraud_zones(self, limit=10) -> list:

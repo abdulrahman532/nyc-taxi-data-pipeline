@@ -1,7 +1,7 @@
 """Spark Streaming Job for NYC Taxi Fraud Detection"""
 
 from pyspark.sql import SparkSession
-from pyspark.sql. functions import col, from_json, when, hour, unix_timestamp, udf
+from pyspark.sql.functions import col, from_json, when, hour, unix_timestamp, udf
 from pyspark.sql.types import (
     StructType, StructField, StringType, IntegerType,
     DoubleType, TimestampType, ArrayType
@@ -13,12 +13,12 @@ import os
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
-logger = logging. getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
-KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'nyc.taxi.trips. raw')
+KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'nyc.taxi.trips.raw')
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
-REDIS_PORT = int(os. getenv('REDIS_PORT', 6379))
+REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
 
 trip_schema = StructType([
     StructField("trip_id", StringType(), True),
@@ -51,8 +51,8 @@ class RedisClient:
         self.client = redis.Redis(host=host, port=port, decode_responses=True)
     
     def update_metrics(self, metrics: dict):
-        pipe = self.client. pipeline()
-        today = datetime.now(). strftime("%Y-%m-%d")
+        pipe = self.client.pipeline()
+        today = datetime.now().strftime("%Y-%m-%d")
         
         if 'trip_count' in metrics:
             pipe.incr(f"metrics:{today}:trips", metrics['trip_count'])
@@ -63,7 +63,7 @@ class RedisClient:
         if 'day_trips' in metrics:
             pipe.incr(f"metrics:{today}:day_trips", metrics['day_trips'])
         if 'night_trips' in metrics:
-            pipe. incr(f"metrics:{today}:night_trips", metrics['night_trips'])
+            pipe.incr(f"metrics:{today}:night_trips", metrics['night_trips'])
         
         for key in ['trips', 'revenue', 'fraud_alerts', 'day_trips', 'night_trips']:
             pipe.expire(f"metrics:{today}:{key}", 7 * 24 * 3600)
@@ -71,21 +71,21 @@ class RedisClient:
         pipe.execute()
     
     def add_fraud_alert(self, alert: dict):
-        today = datetime.now(). strftime("%Y-%m-%d")
+        today = datetime.now().strftime("%Y-%m-%d")
         self.client.lpush(f"fraud:alerts:{today}", json.dumps(alert))
         self.client.ltrim(f"fraud:alerts:{today}", 0, 99)
         self.client.expire(f"fraud:alerts:{today}", 7 * 24 * 3600)
         
-        zone_id = alert. get('PULocationID', 0)
+        zone_id = alert.get('PULocationID', 0)
         self.client.zincrby("fraud:by_zone", 1, str(zone_id))
         
-        route = f"{alert. get('PULocationID', 0)}->{alert.get('DOLocationID', 0)}"
+        route = f"{alert.get('PULocationID', 0)}->{alert.get('DOLocationID', 0)}"
         self.client.zincrby("fraud:by_route", 1, route)
     
     def update_hourly_stats(self, hour_val: int, count: int, revenue: float):
-        today = datetime. now().strftime("%Y-%m-%d")
+        today = datetime.now().strftime("%Y-%m-%d")
         self.client.hset(f"metrics:{today}:hourly:trips", str(hour_val), count)
-        self. client.hset(f"metrics:{today}:hourly:revenue", str(hour_val), revenue)
+        self.client.hset(f"metrics:{today}:hourly:revenue", str(hour_val), revenue)
 
 
 def process_batch(batch_df, batch_id):
@@ -126,7 +126,7 @@ def process_batch(batch_df, batch_id):
     
     if 'pickup_hour' in pdf.columns:
         for hr, group in pdf.groupby('pickup_hour'):
-            redis_client.update_hourly_stats(int(hr), len(group), float(group['total_amount']. sum()))
+            redis_client.update_hourly_stats(int(hr), len(group), float(group['total_amount'].sum()))
     
     logger.info(f"✅ Batch {batch_id}: {trip_count} trips, ${total_revenue:.2f}, {fraud_count} fraud alerts")
 
@@ -136,21 +136,21 @@ def main():
     
     spark = (SparkSession.builder
         .appName("NYC Taxi Fraud Detector")
-        . config("spark.jars. packages", "org. apache.spark:spark-sql-kafka-0-10_2.12:3. 5.0")
+        .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0")
         .config("spark.sql.streaming.checkpointLocation", "/tmp/checkpoint")
         .getOrCreate())
     
     spark.sparkContext.setLogLevel("WARN")
     
-    raw_stream = (spark.readStream. format("kafka")
+    raw_stream = (spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
         .option("subscribe", KAFKA_TOPIC)
-        . option("startingOffsets", "latest")
+        .option("startingOffsets", "latest")
         .load())
     
     parsed_stream = (raw_stream
         .selectExpr("CAST(value AS STRING) as json_str")
-        .select(from_json(col("json_str"), trip_schema). alias("data"))
+        .select(from_json(col("json_str"), trip_schema).alias("data"))
         .select("data.*"))
     
     enriched_stream = (parsed_stream
@@ -160,7 +160,7 @@ def main():
         .withColumn("speed_mph", when(col("duration_min") > 0, (col("trip_distance") / col("duration_min")) * 60).otherwise(0))
         .withColumn("pickup_hour", hour("pickup_ts"))
         .withColumn("is_night", (hour("pickup_ts") >= 22) | (hour("pickup_ts") < 6))
-        .withColumn("fare_per_mile", when(col("trip_distance") > 0, col("fare_amount") / col("trip_distance")). otherwise(0))
+        .withColumn("fare_per_mile", when(col("trip_distance") > 0, col("fare_amount") / col("trip_distance")).otherwise(0))
         .withColumn("tip_pct", when(col("fare_amount") > 0, (col("tip_amount") / col("fare_amount")) * 100).otherwise(0)))
     
     fraud_result_schema = StructType([
@@ -198,7 +198,7 @@ def main():
         if trip_distance == 0 and fare_amount > 0:
             score += 20
             flags.append("zero_distance_with_fare")
-        if fare_per_mile > 10. 5:
+        if fare_per_mile > 10.5:
             score += 20
             flags.append("fare_too_high")
         if fare_amount < 0:
@@ -249,12 +249,12 @@ def main():
             col("passenger_count"), col("payment_type"), col("PULocationID"),
             col("DOLocationID"), col("RatecodeID"), col("airport_fee"),
             col("duration_min"), col("speed_mph"), col("is_night")))
-        .withColumn("fraud_score", col("fraud_result. fraud_score"))
-        .withColumn("fraud_flags", col("fraud_result. fraud_flags"))
+        .withColumn("fraud_score", col("fraud_result.fraud_score"))
+        .withColumn("fraud_flags", col("fraud_result.fraud_flags"))
         .drop("fraud_result"))
     
-    query = (fraud_stream. writeStream
-        . foreachBatch(process_batch)
+    query = (fraud_stream.writeStream
+        .foreachBatch(process_batch)
         .outputMode("append")
         .trigger(processingTime="5 seconds")
         .start())

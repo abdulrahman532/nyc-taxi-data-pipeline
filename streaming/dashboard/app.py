@@ -9,7 +9,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st. title("🚕 NYC Taxi Real-Time Dashboard")
+st.title("🚕 NYC Taxi Real-Time Dashboard")
 st.markdown("---")
 
 st.markdown("""
@@ -20,11 +20,11 @@ st.markdown("""
 - **🕵️ Fraud Detection** - Fraud alerts and analysis
 
 ### 🚀 Getting Started:
-1.  Make sure all services are running (Kafka, Redis, Spark)
+1. Make sure all services are running (Kafka, Redis, Spark)
 2. Start sending trips via the API
-3. Watch the metrics update in real-time! 
+3. Watch the metrics update in real-time!
 
-Select a page from the sidebar to begin. 
+Select a page from the sidebar to begin.
 """)
 
 st.sidebar.success("Select a page above.")

@@ -16,15 +16,15 @@ class TripEvent(BaseModel):
     DOLocationID: int = Field(..., ge=1, le=265)
     payment_type: int = Field(..., ge=0, le=6)
     fare_amount: float
-    extra: Optional[float] = Field(default=0. 0)
-    mta_tax: Optional[float] = Field(default=0. 5)
+    extra: Optional[float] = Field(default=0.0)
+    mta_tax: Optional[float] = Field(default=0.5)
     tip_amount: Optional[float] = Field(default=0.0, ge=0)
     tolls_amount: Optional[float] = Field(default=0.0, ge=0)
     improvement_surcharge: Optional[float] = Field(default=0.3)
     total_amount: float
     congestion_surcharge: Optional[float] = Field(default=0.0)
     airport_fee: Optional[float] = Field(default=0.0)
-    cbd_congestion_fee: Optional[float] = Field(default=0. 0)
+    cbd_congestion_fee: Optional[float] = Field(default=0.0)
     
     @field_validator('store_and_fwd_flag')
     @classmethod
