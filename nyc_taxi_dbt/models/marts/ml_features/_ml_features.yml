@@ -1,7 +1,0 @@
-version: 2
-
-models:
-  - name: ml_trip_features
-    description: Feature-engineered trip data for anomaly detection
-  - name: ml_customer_segments
-    description: Aggregated features for customer segmentation clustering

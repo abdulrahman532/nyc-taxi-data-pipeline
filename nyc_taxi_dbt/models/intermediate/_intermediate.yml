@@ -1,7 +1,0 @@
-version: 2
-
-models:
-  - name: int_trips_cleaned
-    description: Cleaned and validated trip data
-  - name: int_trips_enriched
-    description: Enriched trips with zone information

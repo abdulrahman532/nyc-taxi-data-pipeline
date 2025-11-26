@@ -1,0 +1,10 @@
+version: 2
+sources:
+  - name: raw
+    database: NYC_TAXI_DB
+    schema: RAW
+    tables:
+      - name: trips
+        description: Raw NYC Yellow Taxi trip data
+      - name: taxi_zones
+        description: NYC TLC Taxi Zone lookup
