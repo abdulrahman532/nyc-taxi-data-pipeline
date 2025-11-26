@@ -14,8 +14,9 @@ select
     dolocationid as dropoff_location_id,
     ratecodeid as rate_code_id,
     payment_type as payment_type_id,
-    -- Both stored as raw - conversion in intermediate layer
-    tpep_pickup_datetime as pickup_datetime_raw,
+    -- Pickup: epoch_nanosecond gives 25-digit number, take first 16 digits (microseconds)
+    left(date_part(epoch_nanosecond, tpep_pickup_datetime)::varchar, 16)::number as pickup_datetime_raw,
+    -- Dropoff is stored as microseconds number (16 digits)
     tpep_dropoff_datetime as dropoff_datetime_raw,
     passenger_count,
     trip_distance,

@@ -8,9 +8,7 @@ with staged as (
 ),
 
 -- Step 1: Convert timestamps
--- pickup_datetime_raw is corrupted (shows year 51003759)
--- dropoff_datetime_raw is NUMBER (microseconds) - this is correct
--- We'll extract the numeric part from pickup and convert both
+-- Both pickup and dropoff are now microseconds (16 digits)
 with_timestamps as (
     select
         trip_id,
@@ -19,10 +17,8 @@ with_timestamps as (
         dropoff_location_id,
         rate_code_id,
         payment_type_id,
-        -- Extract epoch from corrupted timestamp, divide to get real timestamp
-        -- The pickup was wrongly interpreted, extract its epoch_nanosecond
-        to_timestamp(date_part(epoch_nanosecond, pickup_datetime_raw) / 1000000000) as pickup_datetime,
-        -- dropoff is stored as microseconds number
+        -- Both are microseconds, divide by 1000000 to get seconds
+        to_timestamp(pickup_datetime_raw / 1000000) as pickup_datetime,
         to_timestamp(dropoff_datetime_raw / 1000000) as dropoff_datetime,
         passenger_count,
         trip_distance,
