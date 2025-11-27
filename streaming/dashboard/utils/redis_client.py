@@ -6,12 +6,18 @@ import os
 from datetime import datetime
 
 class RedisClient:
-    def __init__(self):
+    def __init__(self, clear_on_start=False):
         self.client = redis.Redis(
             host=os.getenv('REDIS_HOST', 'localhost'),
             port=int(os.getenv('REDIS_PORT', 6379)),
             decode_responses=True
         )
+        if clear_on_start:
+            self.clear_all_data()
+    
+    def clear_all_data(self):
+        """Clear all Redis data"""
+        self.client.flushdb()
     
     def get_today_metrics(self) -> dict:
         today = datetime.now().strftime("%Y-%m-%d")

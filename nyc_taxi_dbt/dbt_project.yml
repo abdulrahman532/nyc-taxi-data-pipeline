@@ -12,17 +12,17 @@ models:
   nyc_taxi_dbt:
     staging:
       +materialized: view
-      +schema: staging
+      +schema: bronze
     intermediate:
       +materialized: view
-      +schema: intermediate
+      +schema: silver
     marts:
       core:
         +materialized: table
-        +schema: marts
+        +schema: gold
       aggregations:
         +materialized: table
-        +schema: marts
+        +schema: gold
       insights:
         +materialized: table
         +schema: insights

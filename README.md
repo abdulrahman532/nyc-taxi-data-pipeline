@@ -104,10 +104,11 @@ flowchart LR
 
 | Schema | Type | Tables/Views |
 |--------|------|--------------|
-| **RAW_staging** | Views | `stg_trips`, `stg_zones` |
-| **RAW_intermediate** | Views | `int_trips_validated` |
-| **RAW_marts** | Tables | `dim_zones`, `dim_payment_types`, `dim_rate_codes`, `obt_trips`, `agg_monthly`, `agg_quarterly`, `agg_yearly` |
-| **RAW_insights** | Tables | `insight_uber_effect`, `insight_covid_recovery`, `insight_airport_lifeline`, `insight_payment_shift`, `insight_manhattan_share`, `insight_tipping_patterns`, `insight_route_pricing`, `insight_fee_impact`, `insight_zone_heatmap`, `insight_anomaly_breakdown`, `insight_industry_evolution` |
+| **RAW** | Tables | `TRIPS`, `TAXI_ZONES` |
+| **BRONZE** | Views | `stg_trips`, `stg_zones` |
+| **SILVER** | Views | `int_trips_validated` |
+| **GOLD** | Tables | `dim_zones`, `dim_payment_types`, `dim_rate_codes`, `obt_trips`, `agg_monthly`, `agg_quarterly`, `agg_yearly` |
+| **INSIGHTS** | Tables | `insight_uber_effect`, `insight_covid_recovery`, `insight_airport_lifeline`, `insight_payment_shift`, `insight_manhattan_share`, `insight_tipping_patterns`, `insight_route_pricing`, `insight_fee_impact`, `insight_zone_heatmap`, `insight_anomaly_breakdown`, `insight_industry_evolution` |
 
 ### Staging Layer (Views)
 | Model | Description |

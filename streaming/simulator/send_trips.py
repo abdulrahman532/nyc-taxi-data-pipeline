@@ -72,10 +72,10 @@ def main():
     parser.add_argument('--count', type=int, default=0, help='Number of trips (0=infinite)')
     args = parser.parse_args()
     
-    print(f"🚀 Starting simulator...")
-    print(f"📡 API URL: {args.api_url}")
-    print(f"⏱️  Rate: {args.rate} trips/sec")
-    print(f"🕵️ Fraud rate: {args.fraud_rate * 100}%")
+    print(f"Starting simulator...")
+    print(f"API URL: {args.api_url}")
+    print(f"Rate: {args.rate} trips/sec")
+    print(f"Fraud rate: {args.fraud_rate * 100}%")
     print("")
     
     sent = 0
@@ -83,30 +83,30 @@ def main():
         try:
             if random.random() < args.fraud_rate:
                 trip = generate_fraud_trip()
-                print(f"🔴 Sending FRAUD trip...")
+                print(f"Sending FRAUD trip...")
             else:
                 trip = generate_trip()
-                print(f"🟢 Sending normal trip...")
+                print(f"Sending normal trip...")
             
             response = requests.post(args.api_url, json=trip, timeout=10)
             
             if response.status_code == 201:
                 data = response.json()
-                print(f"✅ Trip sent: {data.get('trip_id', 'unknown')}")
+                print(f"Trip sent: {data.get('trip_id', 'unknown')}")
             else:
-                print(f"❌ Error: {response.status_code} - {response.text}")
+                print(f"Error: {response.status_code} - {response.text}")
             
             sent += 1
             time.sleep(1 / args.rate)
             
         except KeyboardInterrupt:
-            print("\n🛑 Stopped by user")
+            print("\nStopped by user")
             break
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"Error: {e}")
             time.sleep(1)
     
-    print(f"\n📊 Total trips sent: {sent}")
+    print(f"\nTotal trips sent: {sent}")
 
 if __name__ == "__main__":
     main()

@@ -31,7 +31,7 @@ PARQUET_FILE = "yellow_tripdata.parquet"
 
 def download_parquet(url: str, filepath: str) -> bool:
     """Download parquet file from NYC TLC"""
-    print("📥 Downloading data from NYC TLC...")
+    print("Downloading data from NYC TLC...")
     print(f"   URL: {url}")
 
     try:
@@ -51,23 +51,23 @@ def download_parquet(url: str, filepath: str) -> bool:
                     pct = (downloaded / total_size) * 100
                     print(f"\r   Progress: {pct:.1f}% ({downloaded // 1024 // 1024} MB)", end="")
 
-        print(f"\n✅ Downloaded successfully: {filepath}")
+        print(f"\nDownloaded successfully: {filepath}")
         print(f"   Size: {os.path.getsize(filepath) // 1024 // 1024} MB")
 
         return True
 
     except Exception as e:
-        print(f"❌ Download failed: {e}")
+        print(f"Download failed: {e}")
         return False
 
 
 def load_parquet(filepath: str) -> pd.DataFrame:
     """Load parquet file into DataFrame"""
-    print("\n📂 Loading parquet file...")
+    print("\nLoading parquet file...")
 
     try:
         df = pd.read_parquet(filepath)
-        print(f"✅ Loaded {len(df):,} trips")
+        print(f"Loaded {len(df):,} trips")
         print(f"   Columns: {list(df.columns)}")
 
         if "tpep_pickup_datetime" in df.columns:
@@ -77,7 +77,7 @@ def load_parquet(filepath: str) -> pd.DataFrame:
         return df
 
     except Exception as e:
-        print(f"❌ Failed to load: {e}")
+        print(f"Failed to load: {e}")
         return None
 
 
@@ -148,7 +148,7 @@ def prepare_trip(row: pd.Series) -> dict:
 
 def stream_trips(df: pd.DataFrame, api_url: str, rate: float, count: int, skip: int):
     """Stream trips to API endpoint"""
-    print(f"\n🚀 Starting stream to: {api_url}")
+    print(f"\nStarting stream to: {api_url}")
     print(f"   Rate: {rate} trips/second")
     print(f"   Skip first: {skip} rows")
     print(f"   Max trips: {count if count > 0 else 'unlimited'}")
@@ -181,41 +181,41 @@ def stream_trips(df: pd.DataFrame, api_url: str, rate: float, count: int, skip: 
                 trips_per_sec = sent / elapsed if elapsed > 0 else 0
 
                 # Progress display
-                print(f"\r📤 Sent: {sent}/{total} | "
+                print(f"\rSent: {sent}/{total} | "
                       f"Rate: {trips_per_sec:.1f}/s | "
                       f"Errors: {errors} | "
                       f"Elapsed: {elapsed:.0f}s", end="")
             else:
                 errors += 1
                 if errors <= 5:
-                    print(f"\n⚠️  Error {response.status_code}: {response.text[:100]}")
+                    print(f"\nError {response.status_code}: {response.text[:100]}") 
 
             if delay > 0:
                 time.sleep(delay)
 
         except KeyboardInterrupt:
-            print("\n\n⏹️  Stopped by user")
+            print("\n\nStopped by user")
             break
 
         except requests.exceptions.ConnectionError:
             errors += 1
-            print(f"\n❌ Connection error - is the API running?")
+            print(f"\nConnection error - is the API running?")
             time.sleep(2)
 
         except Exception as e:
             errors += 1
             if errors <= 5:
-                print(f"\n❌ Error: {e}")
+                print(f"\nError: {e}")
 
     # Summary
     elapsed = time.time() - start_time
     print("\n\n" + "="*60)
-    print("📊 STREAMING SUMMARY")
+    print("STREAMING SUMMARY")
     print("="*60)
-    print(f"   ✅ Total sent: {sent:,}")
-    print(f"   ❌ Errors: {errors}")
-    print(f"   ⏱️  Time: {elapsed:.1f} seconds")
-    print(f"   📈 Average rate: {sent/elapsed:.1f} trips/second" if elapsed > 0 else "")
+    print(f"   Total sent: {sent:,}")
+    print(f"   Errors: {errors}")
+    print(f"   Time: {elapsed:.1f} seconds")
+    print(f"   Average rate: {sent/elapsed:.1f} trips/second" if elapsed > 0 else "")
     print("="*60)
 
 
@@ -260,7 +260,7 @@ Examples:
     args = parser.parse_args()
 
     print("="*60)
-    print("🚕 NYC TAXI DATA STREAMER")
+    print("NYC TAXI DATA STREAMER")
     print("="*60)
 
     # Determine file path
@@ -269,29 +269,29 @@ Examples:
     # Download if needed
     if not args.file:
         if os.path.exists(filepath) and args.no_download:
-            print(f"📂 Using existing file: {filepath}")
+            print(f"Using existing file: {filepath}")
         else:
             if not download_parquet(args.url, filepath):
-                print("❌ Cannot proceed without data")
+                print("Cannot proceed without data")
                 sys.exit(1)
 
     # Load data
     df = load_parquet(filepath)
     if df is None:
-        print("❌ Cannot proceed without data")
+        print("Cannot proceed without data")
         sys.exit(1)
 
     # Check API health
-    print("\n🔍 Checking API health...")
+    print("\nChecking API health...")
     try:
         health_url = args.api_url.replace('/api/v1/trips', '/health')
         response = requests.get(health_url, timeout=5)
         if response.status_code == 200:
-            print(f"✅ API is healthy: {health_url}")
+            print(f"API is healthy: {health_url}")
         else:
-            print(f"⚠️  API returned status {response.status_code}")
+            print(f"API returned status {response.status_code}")
     except Exception as e:
-        print(f"⚠️  Could not reach API: {e}")
+        print(f"Could not reach API: {e}")
         confirm = input("\nContinue anyway? (y/n): ")
         if confirm.lower() != 'y':
             sys.exit(0)

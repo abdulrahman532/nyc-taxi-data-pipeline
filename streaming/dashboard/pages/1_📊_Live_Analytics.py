@@ -124,7 +124,7 @@ def render():
                 df = df.sort_values('Trips', ascending=True).tail(10)
                 
                 fig = px.bar(df, x='Trips', y='Zone', orientation='h', color='Trips',
-                           color_continuous_scale='Greens', title="Top Pickup Zones")
+                           color_continuous_scale='Reds', title="Top Pickup Zones")
                 fig.update_layout(template="plotly_dark", height=300, showlegend=False, yaxis_title="")
                 st.plotly_chart(fig, use_container_width=True)
         

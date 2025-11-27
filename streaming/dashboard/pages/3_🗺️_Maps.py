@@ -144,7 +144,8 @@ def render_trip_routes():
             height=700, margin={"r":0,"t":0,"l":0,"b":0},
             legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(0,0,0,0.5)")
         )
-        st.plotly_chart(fig, use_container_width=True)
+        config = {'scrollZoom': True, 'displayModeBar': True}
+        st.plotly_chart(fig, use_container_width=True, config=config)
         
         col1, col2 = st.columns(2)
         with col1:
@@ -187,7 +188,8 @@ def render_pickup_hotspots():
                 mapbox_style='carto-darkmatter',
                 height=700, margin={"r":0,"t":0,"l":0,"b":0}
             )
-            st.plotly_chart(fig, use_container_width=True)
+            config = {'scrollZoom': True, 'displayModeBar': True}
+            st.plotly_chart(fig, use_container_width=True, config=config)
             
             st.markdown("**🟢 Larger circles = More pickups**")
         else:
@@ -228,7 +230,8 @@ def render_dropoff_hotspots():
                 mapbox_style='carto-darkmatter',
                 height=700, margin={"r":0,"t":0,"l":0,"b":0}
             )
-            st.plotly_chart(fig, use_container_width=True)
+            config = {'scrollZoom': True, 'displayModeBar': True}
+            st.plotly_chart(fig, use_container_width=True, config=config)
             
             st.markdown("**🔴 Larger circles = More dropoffs**")
         else:
@@ -283,7 +286,8 @@ def render_fraud_routes():
             mapbox=dict(style='carto-darkmatter', center=dict(lat=40.7580, lon=-73.9855), zoom=10),
             height=700, margin={"r":0,"t":0,"l":0,"b":0}
         )
-        st.plotly_chart(fig, use_container_width=True)
+        config = {'scrollZoom': True, 'displayModeBar': True}
+        st.plotly_chart(fig, use_container_width=True, config=config)
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -329,7 +333,8 @@ def render_revenue_map():
                 mapbox_style='carto-darkmatter',
                 height=700, margin={"r":0,"t":0,"l":0,"b":0}
             )
-            st.plotly_chart(fig, use_container_width=True)
+            config = {'scrollZoom': True, 'displayModeBar': True}
+            st.plotly_chart(fig, use_container_width=True, config=config)
             
             st.markdown("**💰 Larger circles = Higher revenue**")
         else:
@@ -381,7 +386,8 @@ def render_zone_activity():
                 mapbox_style='carto-darkmatter',
                 height=700, margin={"r":0,"t":0,"l":0,"b":0}
             )
-            st.plotly_chart(fig, use_container_width=True)
+            config = {'scrollZoom': True, 'displayModeBar': True}
+            st.plotly_chart(fig, use_container_width=True, config=config)
             
             # Summary stats
             col1, col2, col3 = st.columns(3)
