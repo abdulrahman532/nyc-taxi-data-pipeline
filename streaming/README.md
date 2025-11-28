@@ -154,7 +154,7 @@ curl -X POST http://localhost:8000/api/v1/trips \
 | **Redis** | 6379 | Metrics cache | ✅ |
 | **FastAPI** | 8000 | REST API server | ✅ |
 | **Dashboard** | 8501 | Streamlit UI | ✅ |
-| **Kafka UI** | 8080 | Kafka management | - |
+| **Kafka UI** | 8085 | Kafka management | - |
 
 ### Quick Access URLs
 
@@ -163,7 +163,7 @@ curl -X POST http://localhost:8000/api/v1/trips \
 | 🖥️ Dashboard | http://localhost:8501 |
 | 📖 API Docs | http://localhost:8000/docs |
 | ❤️ API Health | http://localhost:8000/health |
-| 📊 Kafka UI | http://localhost:8080 |
+| 📊 Kafka UI | http://localhost:8085 |
 | ⚡ Spark Master | http://localhost:8081 |
 
 ---
@@ -187,6 +187,7 @@ Real-time trip metrics and visualizations.
 
 **Features:**
 - Auto-refresh (configurable 1-30 seconds)
+ - Auto-refresh (configurable 1-30 seconds) — a global `Realtime` toggle in the sidebar enables a faster 250ms interval for near-real-time updates (note: maps and some heavy visuals may turn off autoplay by default).
 - Dark theme
 - Interactive charts (zoom, hover, pan)
 
@@ -254,6 +255,7 @@ ZONE_COORDS = {
 | Pickup markers | 🟢 Green | Pickup locations |
 | Dropoff markers | 🔴 Red | Dropoff locations |
 | Route lines | Various | Trip connections |
+| Animated Trips | — | PyDeck `TripsLayer` (animated moving taxi route lines — enable on Maps page) |
 | Fraud High Risk | 🔴 Red | Score 70+ |
 | Fraud Medium | 🟠 Orange | Score 50-69 |
 | Fraud Low | 🟡 Yellow | Score <50 |
@@ -441,7 +443,7 @@ docker compose logs [service_name]
 | Issue | Solution |
 |-------|----------|
 | API Connection Error | Check `docker compose ps fastapi` |
-| Dashboard No Data | Run `docker exec redis redis-cli FLUSHALL` |
+| Dashboard No Data | Run `docker exec redis redis-cli FLUSHALL` or use the Admin "Clear Redis Data (FLUSH)" button in the dashboard sidebar |
 | Maps Not Loading | Rebuild: `docker compose build dashboard` |
 | Spark Job Failing | Check: `docker compose logs spark-job` |
 | Kafka Issues | Check: `docker compose logs kafka` |
@@ -452,6 +454,31 @@ docker compose logs [service_name]
 docker compose down
 docker compose up -d --build
 ```
+
+### Admin Tools & Local Simulator Management
+
+If you started any simulators locally (host, outside Docker) such as `send_trips.py` or `stream_from_parquet.py`, stop them to avoid excess load on Redis or the API using the helper script:
+
+```bash
+chmod +x ./streaming/scripts/stop_local_simulators.sh
+./streaming/scripts/stop_local_simulators.sh
+```
+
+This script uses `pkill` to stop running instances of the simulator scripts and is useful when you are testing streaming from your host.
+
+Dashboard Admin Controls:
+- Use the sidebar `Realtime (live updates)` global toggle to enable very fast polling (250ms) for near-real-time updates.
+- Use the admin `Clear Redis Data (FLUSH)` button to quickly clear state during development.
+
+### Dashboard Requirements (additional packages)
+The dashboard now requires a few extra packages for animation and fast polling. Add them in `streaming/dashboard/requirements.txt`:
+
+```
+pydeck==0.9.0
+numpy
+streamlit-autorefresh==0.1.6
+```
+
 
 ### Health Checks
 

@@ -34,6 +34,26 @@ This project implements a complete **batch + real-time** data pipeline that:
 - **Orchestrates** batch workflows with Apache Airflow
 - **Delivers** analytics-ready datasets for business intelligence
 
+## 🔁 Recent updates (Nov 2025)
+
+- Dashboard renamed to **TaxiPulse** — a single-file Streamlit app for real-time monitoring.
+- Replaced blocking sleep + rerun loops with `streamlit-autorefresh` for near real-time updates. Use the Sidebar toggle `Realtime (live updates)` to enable a 250ms polling interval for a near-instant experience.
+- Improved maps and visuals:
+  - New PyDeck animated `TripsLayer` for moving route visualizations; start/end markers added.
+  - Maps use a clearer red palette for pickup/dropoffs and show line widths scaled by estimated route volume.
+  - Added borough labels for geographic context and a small "Top Estimated Routes" table.
+- Fraud Monitor & Live Analytics pages updated: new charts, updated color palette (Reds), and removed deprecated Streamlit parameters.
+- Admin & operational tools added:
+  - Dashboard: small admin control to clear Redis data (`FLUSHALL`).
+  - Scripts: `streaming/scripts/stop_local_simulators.sh` to kill host-level simulator processes.
+  - Docker: `kafka-ui` host port changed to `8085` to avoid conflicts; dashboard container now has `restart: unless-stopped` for better resilience.
+- Redis improvements:
+  - Added `get_hourly_matrix(days=...)` helper in `streaming/dashboard/utils/redis_client.py` that aggregates trips by day-of-week and hour-of-day for Rush Hours heatmaps.
+- Requirements:
+  - Dashboard now includes `pydeck==0.9.0`, `numpy`, and `streamlit-autorefresh==0.1.6` in `streaming/dashboard/requirements.txt`.
+
+These updates deliver a smoother near-realtime dashboard experience, clearer map visuals, and operational tools for managing local simulators and Redis storage.
+
 ### Key Features
 
 ✅ Incremental data loading with sync state management  
@@ -193,6 +213,19 @@ cd streaming/dashboard && streamlit run app.py
 \`\`\`
 
 See [streaming/README.md](streaming/README.md) for detailed documentation.
+
+## 🧰 Developer & Admin Tips
+
+- Stop local, host-level simulators (if started outside Docker):
+
+```bash
+chmod +x ./streaming/scripts/stop_local_simulators.sh
+./streaming/scripts/stop_local_simulators.sh
+```
+
+- Clear all Redis session data from the host: `docker exec redis redis-cli FLUSHALL` (or use the "Clear Redis Data (FLUSH)" admin button in the TaxiPulse sidebar)
+- Dashboard: enable `Realtime (live updates)` in the sidebar for near-real-time polling (250ms). For animated routes in Maps, enable **Animated Trip Routes (PyDeck)** in the Maps page.
+- Kafka UI host port changed to 8085 to avoid local conflicts. Access: http://localhost:8085
 
 ## 🚀 Setup & Installation
 
