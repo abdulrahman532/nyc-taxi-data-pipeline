@@ -394,5 +394,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Snowflake](https://www.snowflake.com/) for the cloud data platform
 
 ---
-
-**Built with ❤️ by [Abdulrahman](https://github.com/abdulrahman532)**
