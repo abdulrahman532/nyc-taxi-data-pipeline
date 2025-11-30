@@ -565,11 +565,14 @@ streaming/
 
 ---
 
-## 👨‍💻 Author
+## 👥 Contributors
 
-**Abdul Rahman**
+**Abdul Rahman**  
 - GitHub: [@abdulrahman532](https://github.com/abdulrahman532)
-- Repository: [nyc-taxi-data-pipeline](https://github.com/abdulrahman532/nyc-taxi-data-pipeline)
+
+**Malk Ehab**  
+- GitHub: [@malkehab](https://github.com/malkehab)
+
 
 ---
 
