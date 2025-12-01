@@ -1,20 +1,24 @@
 name: 'nyc_taxi_dbt'
 version: '1.0.0'
 config-version: 2
+
 profile: 'nyc_taxi'
+
 model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
 seed-paths: ["seeds"]
 macro-paths: ["macros"]
-test-paths: ["tests"]
-vars:
-  start_date: '2013-01-01'
+
+require-dbt-version: ">=1.5.0"
+
 models:
   nyc_taxi_dbt:
     staging:
       +materialized: view
       +schema: bronze
     intermediate:
-      +materialized: view
+      +materialized: table
       +schema: silver
     marts:
       core:
@@ -24,5 +28,5 @@ models:
         +materialized: table
         +schema: gold
       insights:
-        +materialized: table
+        +materialized: view    
         +schema: insights

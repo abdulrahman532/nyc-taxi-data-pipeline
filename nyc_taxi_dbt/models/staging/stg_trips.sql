@@ -1,32 +1,26 @@
-{{ config(materialized='view') }}
-
--- Staging: minimal transformation, keep data as-is from source
--- Note: pickup_datetime might be corrupted, dropoff is stored as microseconds
-
-with source as (
-    select 
-        *,
-        row_number() over (
-            partition by tpep_dropoff_datetime, vendorid, pulocationid, dolocationid, fare_amount, trip_distance
-            order by tpep_pickup_datetime
-        ) as row_num
-    from {{ source('raw', 'trips') }}
-)
+{{ config(materialized='view', schema='bronze') }}
 
 select
     {{ dbt_utils.generate_surrogate_key([
-        'tpep_dropoff_datetime', 'vendorid', 'pulocationid', 'dolocationid', 
-        'fare_amount', 'trip_distance', 'tip_amount', 'row_num'
+        'tpep_pickup_datetime',
+        'tpep_dropoff_datetime',
+        'vendorid',
+        'pulocationid',
+        'dolocationid',
+        'trip_distance',
+        'fare_amount',
+        'total_amount'
     ]) }} as trip_id,
-    vendorid as vendor_id,
-    pulocationid as pickup_location_id,
-    dolocationid as dropoff_location_id,
-    ratecodeid as rate_code_id,
-    payment_type as payment_type_id,
-    -- Pickup: epoch_nanosecond gives 25-digit number, take first 16 digits (microseconds)
-    left(date_part(epoch_nanosecond, tpep_pickup_datetime)::varchar, 16)::number as pickup_datetime_raw,
-    -- Dropoff is stored as microseconds number (16 digits)
-    tpep_dropoff_datetime as dropoff_datetime_raw,
+
+    vendorid               as vendor_id,
+    pulocationid           as pickup_location_id,
+    dolocationid           as dropoff_location_id,
+    ratecodeid             as rate_code_id,
+    payment_type           as payment_type_id,
+
+    left(date_part(epoch_nanosecond, tpep_pickup_datetime)::varchar, 16)::bigint as pickup_datetime_raw,
+    left(date_part(epoch_nanosecond, tpep_dropoff_datetime)::varchar, 16)::bigint as dropoff_datetime_raw,
+
     passenger_count,
     trip_distance,
     store_and_fwd_flag,
@@ -38,7 +32,8 @@ select
     improvement_surcharge,
     total_amount,
     congestion_surcharge,
-    coalesce(airport_fee, 0) as airport_fee,
-    coalesce(cbd_congestion_fee, 0) as cbd_congestion_fee
-from source
+    airport_fee,
+    cbd_congestion_fee
+
+from {{ source('raw', 'trips') }}
 where tpep_dropoff_datetime is not null

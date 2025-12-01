@@ -6,6 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import time
+from streamlit_autorefresh import st_autorefresh
 import sys
 import os
 
@@ -20,7 +21,7 @@ redis_client = RedisClient()
 zone_lookup = ZoneLookup()
 
 refresh_rate = st.sidebar.slider("Refresh Rate (sec)", 1, 30, 3)
-auto_refresh = st.sidebar.checkbox("Auto Refresh", value=True)
+auto_refresh = st.session_state.get('realtime', False) or st.sidebar.checkbox("Auto Refresh", value=False)
 min_score = st.sidebar.slider("Min Fraud Score", 0, 100, 30)
 
 ZONE_COORDS = {
@@ -87,7 +88,7 @@ def render():
                 fig.add_hline(y=70, line_dash="dash", line_color="red")
                 fig.add_hline(y=50, line_dash="dash", line_color="orange")
                 fig.update_layout(title="Fraud Score Timeline", template="plotly_dark", height=350)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 st.info("No fraud alerts yet")
         
@@ -101,7 +102,7 @@ def render():
                 fig = px.bar(df, x='Count', y='Zone', orientation='h', color='Count',
                            color_continuous_scale='Reds', title="Top Fraud Zones")
                 fig.update_layout(template="plotly_dark", height=350, showlegend=False, yaxis_title="")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 st.info("No fraud zone data")
         
@@ -126,12 +127,12 @@ def render():
                 fig = px.bar(df, x='Count', y='Flag', orientation='h', color='Count',
                            color_continuous_scale='Reds', title="Fraud Indicators")
                 fig.update_layout(template="plotly_dark", height=250, showlegend=False, yaxis_title="")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         
         st.caption(f"Updated: {datetime.now().strftime('%H:%M:%S')}")
 
 render()
 
 if auto_refresh:
-    time.sleep(refresh_rate)
-    st.rerun()
+    realtime_interval = 250 if st.session_state.get('realtime', False) else refresh_rate * 1000
+    st_autorefresh(interval=realtime_interval, key='fraud_autorefresh')

@@ -2,9 +2,12 @@
 
 import streamlit as st
 import pandas as pd
+import pydeck as pdk
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 import time
 import sys
 import os
@@ -62,6 +65,25 @@ def get_coord(zone_id):
     h = int(hashlib.md5(str(zone_id).encode()).hexdigest()[:8], 16)
     return (40.7128 + (h % 1000) / 15000 - 0.033, -74.0060 + (h % 1500) / 15000 - 0.05)
 
+
+def generate_path(start_coords, end_coords, duration=150):
+    """Generate a linearly interpolated path between two coordinates.
+
+    start_coords and end_coords are (lat, lon). Returns dict with path (list of [lon, lat])
+    and timestamps for animation.
+    """
+    path = []
+    timestamps = []
+    if duration < 2:
+        duration = 2
+    for i in range(duration):
+        t = i / float(duration - 1)
+        lat = start_coords[0] + (end_coords[0] - start_coords[0]) * t
+        lon = start_coords[1] + (end_coords[1] - start_coords[1]) * t
+        path.append([lon, lat])
+        timestamps.append(i)
+    return {"path": path, "timestamps": timestamps}
+
 # Sidebar controls
 st.sidebar.markdown("## 🗺️ Map Selection")
 map_type = st.sidebar.selectbox(
@@ -72,7 +94,7 @@ map_type = st.sidebar.selectbox(
 
 st.sidebar.markdown("---")
 refresh_rate = st.sidebar.slider("Refresh Rate (sec)", 1, 30, 5)
-auto_refresh = st.sidebar.checkbox("Auto Refresh", value=False)
+auto_refresh = st.session_state.get('realtime', False) or st.sidebar.checkbox("Auto Refresh", value=False)
 
 placeholder = st.empty()
 
@@ -82,6 +104,62 @@ def render_trip_routes():
     
     metrics = redis_client.get_metrics()
     zone_stats = redis_client.get_zone_stats()
+    # Toggle for animated PyDeck layer
+    animated = st.sidebar.checkbox("Animated Trip Routes (PyDeck)", value=False, key="animated_trip_routes")
+    if animated:
+        st.subheader("🚖 Animated Trip Routes (PyDeck)")
+        duration = st.sidebar.slider("Animation Duration (steps)", 50, 300, 150)
+        trail_length = st.sidebar.slider("Trail Length", 10, 600, 300)
+        autoplay = st.sidebar.checkbox("Autoplay", value=True)
+        if autoplay:
+            # trigger rerun at a higher frequency when autoplay is enabled so the deck animation updates
+            realtime_interval = 250 if st.session_state.get('realtime', False) else 500
+            st_autorefresh(interval=realtime_interval, key='deck_autorefresh')
+        if zone_stats:
+            pickup_zones = zone_stats.get('pickup', {})
+            dropoff_zones = zone_stats.get('dropoff', {})
+            top_pickups = sorted(pickup_zones.items(), key=lambda x: int(x[1]), reverse=True)[:20]
+            top_dropoffs = sorted(dropoff_zones.items(), key=lambda x: int(x[1]), reverse=True)[:20]
+            trips_data = []
+            for ((pu_zone, _), (do_zone, _)) in zip(top_pickups, top_dropoffs):
+                pu_lat, pu_lon = get_coord(int(pu_zone))
+                do_lat, do_lon = get_coord(int(do_zone))
+                trip = generate_path((pu_lat, pu_lon), (do_lat, do_lon), duration=duration)
+                trips_data.append(trip)
+            if trips_data:
+                try:
+                    # choose current_time based on autoplay or user control
+                    if autoplay:
+                        current_time = int(time.time()) % duration
+                    else:
+                        current_time = st.sidebar.slider('Current Time', 0, duration - 1, 0)
+                    layer = pdk.Layer(
+                        "TripsLayer",
+                        trips_data,
+                        get_path="path",
+                        get_timestamps="timestamps",
+                        get_color=[255, 80, 80],
+                        opacity=0.8,
+                        width_min_pixels=6,
+                        rounded=True,
+                        trail_length=trail_length,
+                    current_time=current_time,
+                    )
+                    # add start and end scatter layers
+                    start_points = [{'lon': p['path'][0][0], 'lat': p['path'][0][1]} for p in trips_data]
+                    end_points = [{'lon': p['path'][-1][0], 'lat': p['path'][-1][1]} for p in trips_data]
+                    start_layer = pdk.Layer("ScatterplotLayer", start_points, get_position=['lon', 'lat'], get_radius=200, get_fill_color=[0,255,0])
+                    end_layer = pdk.Layer("ScatterplotLayer", end_points, get_position=['lon', 'lat'], get_radius=200, get_fill_color=[255,0,0])
+                    view_state = pdk.ViewState(latitude=40.7580, longitude=-73.9855, zoom=11, pitch=45, bearing=0)
+                    r = pdk.Deck(layers=[layer, start_layer, end_layer], initial_view_state=view_state, map_style="carto-darkmatter", tooltip={"text": "Moving Taxi"})
+                    st.pydeck_chart(r, width='stretch')
+                except Exception as e:
+                    st.error(f"Could not render animated routes: {e}")
+            else:
+                st.info("No trips to animate yet")
+        else:
+            st.info("No trip data yet")
+        return
     
     if zone_stats:
         fig = go.Figure()
@@ -95,20 +173,24 @@ def render_trip_routes():
         top_dropoffs = sorted(dropoff_zones.items(), key=lambda x: int(x[1]), reverse=True)[:15]
         
         colors = px.colors.qualitative.Set2
-        
+
+        max_count = max([int(x[1]) for x in top_pickups + top_dropoffs] or [1])
         for i, ((pu_zone, pu_count), (do_zone, do_count)) in enumerate(zip(top_pickups, top_dropoffs)):
             pu_coord = get_coord(int(pu_zone))
             do_coord = get_coord(int(do_zone))
-            
+            width_px = int(2 + (min(int(pu_count), int(do_count)) / max_count) * 12)
             fig.add_trace(go.Scattermapbox(
                 mode='lines',
                 lon=[pu_coord[1], do_coord[1]],
                 lat=[pu_coord[0], do_coord[0]],
-                line=dict(width=3, color=colors[i % len(colors)]),
-                opacity=0.7,
+                line=dict(width=width_px, color='#ff4444'),
+                opacity=0.8,
                 name=f"Route {i+1}",
                 showlegend=False
             ))
+            # Add markers for start and end
+            fig.add_trace(go.Scattermapbox(mode='markers', lon=[pu_coord[1]], lat=[pu_coord[0]], marker=dict(size=8, color='#00ff00'), hovertext=[f"Start: {zone_lookup.get_zone_name(int(pu_zone))} ({pu_count})"]))
+            fig.add_trace(go.Scattermapbox(mode='markers', lon=[do_coord[1]], lat=[do_coord[0]], marker=dict(size=8, color='#ff4444'), hovertext=[f"End: {zone_lookup.get_zone_name(int(do_zone))} ({do_count})"]))
         
         # Add pickup markers
         pu_lats = [get_coord(int(z))[0] for z, _ in top_pickups]
@@ -118,8 +200,8 @@ def render_trip_routes():
         fig.add_trace(go.Scattermapbox(
             mode='markers+text',
             lon=pu_lons, lat=pu_lats,
-            marker=dict(size=15, color='#00ff00', symbol='circle'),
-            text=[zone_lookup.get_zone_name(int(z))[:10] for z, _ in top_pickups],
+            marker=dict(size=15, color='#ff4444', symbol='circle'),
+            text=[zone_lookup.get_zone_name(int(z)) for z, _ in top_pickups],
             textposition="top center",
             textfont=dict(size=10, color='white'),
             hovertext=pu_texts,
@@ -139,13 +221,45 @@ def render_trip_routes():
             name='Dropoffs'
         ))
         
-        fig.update_layout(
-            mapbox=dict(style='carto-darkmatter', center=dict(lat=40.7580, lon=-73.9855), zoom=10),
-            height=700, margin={"r":0,"t":0,"l":0,"b":0},
-            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(0,0,0,0.5)")
-        )
-        config = {'scrollZoom': True, 'displayModeBar': True}
-        st.plotly_chart(fig, use_container_width=True, config=config)
+    fig.update_layout(
+        mapbox=dict(style='carto-darkmatter', center=dict(lat=40.7580, lon=-73.9855), zoom=10),
+        height=700, margin={"r":0,"t":0,"l":0,"b":0},
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(0,0,0,0.5)")
+    )
+    # Add borough labels for geography context
+    boroughs = {
+        'Manhattan': (40.7831, -73.9712),
+        'Brooklyn': (40.6782, -73.9442),
+        'Queens': (40.7282, -73.7949),
+        'Bronx': (40.8448, -73.8648),
+        'Staten Island': (40.5795, -74.1502)
+    }
+    b_lats = [v[0] for v in boroughs.values()]
+    b_lons = [v[1] for v in boroughs.values()]
+    b_names = [k for k in boroughs.keys()]
+    fig.add_trace(go.Scattermapbox(
+        mode='text',
+        lon=b_lons, lat=b_lats,
+        text=b_names,
+        textfont=dict(size=12, color='white', family='Arial')
+    ))
+    config = {'scrollZoom': True, 'displayModeBar': True}
+    st.plotly_chart(fig, width='stretch', config=config)
+        # Add a small table for top estimated routes (approx min pickup/dropoff count)
+        route_estimates = []
+        for (pu_zone, pu_count), (do_zone, do_count) in zip(top_pickups, top_dropoffs):
+            route_estimates.append({
+                'pickup_zone': zone_lookup.get_zone_name(int(pu_zone)),
+                'dropoff_zone': zone_lookup.get_zone_name(int(do_zone)),
+                'pickup_count': int(pu_count),
+                'dropoff_count': int(do_count),
+                'est_trips': int(min(int(pu_count), int(do_count)))
+            })
+        df_routes = pd.DataFrame(route_estimates).sort_values('est_trips', ascending=False).head(10)
+        if not df_routes.empty:
+            st.markdown('### Top Estimated Routes')
+            st.table(df_routes)
+        
         
         col1, col2 = st.columns(2)
         with col1:
@@ -181,7 +295,7 @@ def render_pickup_hotspots():
             fig = px.scatter_mapbox(
                 df, lat='lat', lon='lon', size='count', color='count',
                 hover_name='zone_name', hover_data={'count': True, 'lat': False, 'lon': False},
-                color_continuous_scale='Greens', size_max=40,
+                color_continuous_scale='Reds', size_max=40,
                 zoom=10, center={"lat": 40.7580, "lon": -73.9855}
             )
             fig.update_layout(
@@ -189,9 +303,9 @@ def render_pickup_hotspots():
                 height=700, margin={"r":0,"t":0,"l":0,"b":0}
             )
             config = {'scrollZoom': True, 'displayModeBar': True}
-            st.plotly_chart(fig, use_container_width=True, config=config)
+            st.plotly_chart(fig, width='stretch', config=config)
             
-            st.markdown("**🟢 Larger circles = More pickups**")
+            st.markdown("**Larger circles = More pickups**")
         else:
             st.info("No pickup data yet")
     else:
@@ -231,7 +345,7 @@ def render_dropoff_hotspots():
                 height=700, margin={"r":0,"t":0,"l":0,"b":0}
             )
             config = {'scrollZoom': True, 'displayModeBar': True}
-            st.plotly_chart(fig, use_container_width=True, config=config)
+            st.plotly_chart(fig, width='stretch', config=config)
             
             st.markdown("**🔴 Larger circles = More dropoffs**")
         else:
@@ -287,7 +401,7 @@ def render_fraud_routes():
             height=700, margin={"r":0,"t":0,"l":0,"b":0}
         )
         config = {'scrollZoom': True, 'displayModeBar': True}
-        st.plotly_chart(fig, use_container_width=True, config=config)
+        st.plotly_chart(fig, width='stretch', config=config)
         
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -334,7 +448,7 @@ def render_revenue_map():
                 height=700, margin={"r":0,"t":0,"l":0,"b":0}
             )
             config = {'scrollZoom': True, 'displayModeBar': True}
-            st.plotly_chart(fig, use_container_width=True, config=config)
+            st.plotly_chart(fig, width='stretch', config=config)
             
             st.markdown("**💰 Larger circles = Higher revenue**")
         else:
@@ -387,7 +501,7 @@ def render_zone_activity():
                 height=700, margin={"r":0,"t":0,"l":0,"b":0}
             )
             config = {'scrollZoom': True, 'displayModeBar': True}
-            st.plotly_chart(fig, use_container_width=True, config=config)
+            st.plotly_chart(fig, width='stretch', config=config)
             
             # Summary stats
             col1, col2, col3 = st.columns(3)
@@ -422,5 +536,5 @@ def render():
 render()
 
 if auto_refresh:
-    time.sleep(refresh_rate)
-    st.rerun()
+    realtime_interval = 250 if st.session_state.get('realtime', False) else refresh_rate * 1000
+    st_autorefresh(interval=realtime_interval, key='maps_autorefresh_page')

@@ -111,3 +111,28 @@ class RedisClient:
             'dropoff': dropoff_zones,
             'revenue': revenue_zones
         }
+
+    def get_hourly_matrix(self, days: int = 7) -> dict:
+        """Return a matrix of hourly trips for the past `days` days grouped by weekday.
+
+        The return value is a dict mapping weekday names to lists of 24 integer counts
+        for each hour of the day (0..23). Missing hours/days default to 0.
+        """
+        from datetime import datetime, timedelta
+
+        today_dt = datetime.now()
+        # build ordered weekday names monday->sunday
+        weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        matrix = {d: [0] * 24 for d in weekdays}
+
+        for offset in range(days):
+            dt = today_dt - timedelta(days=offset)
+            day_key = dt.strftime('%Y-%m-%d')
+            weekday_name = weekdays[dt.weekday()]
+            hourly = self.client.hgetall(f"metrics:{day_key}:hourly:trips")
+            # hourly is a dict of str(hour) -> str(count)
+            for h in range(24):
+                count = int(hourly.get(str(h), 0) or 0)
+                matrix[weekday_name][h] += count
+
+        return matrix
