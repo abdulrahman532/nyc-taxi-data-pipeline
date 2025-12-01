@@ -198,7 +198,7 @@ The system detects fraud using 15+ rules including:
 - And more...
 
 ### Quick Start
-\`\`\`bash
+```bash
 # Start infrastructure
 cd streaming/docker && docker-compose up -d
 
@@ -210,7 +210,7 @@ cd streaming/spark && spark-submit fraud_detector.py
 
 # Start dashboard
 cd streaming/dashboard && streamlit run app.py
-\`\`\`
+```
 
 See [streaming/README.md](streaming/README.md) for detailed documentation.
 
@@ -239,32 +239,32 @@ chmod +x ./streaming/scripts/stop_local_simulators.sh
 
 ### 1. Clone the Repository
 
-\`\`\`bash
+```bash
 git clone https://github.com/abdulrahman532/nyc-taxi-data-pipeline.git
 cd nyc-taxi-data-pipeline
-\`\`\`
+```
 
 ### 2. Set Up Python Environment
 
-\`\`\`bash
+```bash
 python -m venv dbt_venv
 source dbt_venv/bin/activate
 pip install dbt-snowflake apache-airflow boto3
-\`\`\`
+```
 
 ### 3. Configure Snowflake
 
 Run the setup script in Snowflake:
 
-\`\`\`sql
+```sql
 -- Execute snowflake/setup.sql in Snowflake Worksheets
-\`\`\`
+```
 
 ### 4. Configure dbt Profile
 
 Create \`~/.dbt/profiles.yml\`:
 
-\`\`\`yaml
+```yaml
 nyc_taxi:
   target: dev
   outputs:
@@ -278,20 +278,20 @@ nyc_taxi:
       warehouse: TAXI_WH
       schema: RAW
       threads: 4
-\`\`\`
+```
 
 ### 5. Install dbt Packages
 
-\`\`\`bash
+```bash
 cd nyc_taxi_dbt
 dbt deps
-\`\`\`
+```
 
 ## 💻 Usage
 
 ### Run dbt Models
 
-\`\`\`bash
+```bash
 cd nyc_taxi_dbt
 
 # Run all models
@@ -307,29 +307,29 @@ dbt run --select insights
 
 # Run with tests
 dbt build
-\`\`\`
+```
 
 ### Run Data Tests
 
-\`\`\`bash
+```bash
 dbt test
-\`\`\`
+```
 
 ### Generate Documentation
 
-\`\`\`bash
+```bash
 dbt docs generate
 dbt docs serve
-\`\`\`
+```
 
 ### Trigger Airflow DAGs
 
-\`\`\`bash
+```bash
 # Via Airflow CLI
 airflow dags trigger nyc_taxi_sync_dag
 
 # Or use the Airflow Web UI
-\`\`\`
+```
 
 ## ✅ Data Quality
 
@@ -351,17 +351,20 @@ The pipeline includes comprehensive data quality checks:
 ## 📈 Sample Queries
 
 ### Monthly Revenue Trend
-\`\`\`sql
+```sql
 SELECT * FROM NYC_TAXI_DB.MARTS.AGG_MONTHLY
 ORDER BY year, month;
-\`\`\`
+```
 
 ### COVID Recovery Analysis
 
-`SELECT * FROM NYC_TAXI_DB.MARTS.INSIGHT_COVID_RECOVERY ORDER BY year, month;`
+```sql
+SELECT * FROM NYC_TAXI_DB.MARTS.INSIGHT_COVID_RECOVERY
+ORDER BY year, month;
+```
 
 ### Top Pickup Locations
-\`\`\`sql
+```sql
 SELECT 
     pickup_zone,
     pickup_borough,
@@ -371,7 +374,7 @@ FROM NYC_TAXI_DB.MARTS.OBT_TRIPS
 GROUP BY 1, 2
 ORDER BY trip_count DESC
 LIMIT 10;
-\`\`\`
+```
 
 ## 🤝 Contributing
 
