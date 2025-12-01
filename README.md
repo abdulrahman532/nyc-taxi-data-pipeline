@@ -357,10 +357,8 @@ ORDER BY year, month;
 \`\`\`
 
 ### COVID Recovery Analysis
-\`\`\`sql
-SELECT * FROM NYC_TAXI_DB.MARTS.INSIGHT_COVID_RECOVERY
-ORDER BY year, month;
-\`\`\`
+
+`SELECT * FROM NYC_TAXI_DB.MARTS.INSIGHT_COVID_RECOVERY ORDER BY year, month;`
 
 ### Top Pickup Locations
 \`\`\`sql
