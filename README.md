@@ -386,14 +386,8 @@ LIMIT 10;
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 🙏 Acknowledgments
 
 - [NYC Taxi & Limousine Commission](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page) for the open dataset
 - [dbt Labs](https://www.getdbt.com/) for the amazing transformation framework
 - [Snowflake](https://www.snowflake.com/) for the cloud data platform
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
