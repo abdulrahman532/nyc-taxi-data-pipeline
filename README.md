@@ -1,393 +1,280 @@
-# 🚕 NYC Taxi Data Pipeline
+# NYC Taxi Data Pipeline: Hybrid Batch ELT & Real-Time Streaming Platform
 
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://python.org)
-[![dbt](https://img.shields.io/badge/dbt-1.0+-orange.svg)](https://getdbt.com)
-[![Airflow](https://img.shields.io/badge/Apache%20Airflow-2.0+-green.svg)](https://airflow.apache.org)
-[![Snowflake](https://img.shields.io/badge/Snowflake-Data%20Cloud-29B5E8.svg)](https://snowflake.com)
-[![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-Streaming-231F20.svg)](https://kafka.apache.org)
-[![Apache Spark](https://img.shields.io/badge/Apache%20Spark-Streaming-E25A1C.svg)](https://spark.apache.org)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+A production-grade data engineering platform built for the New York City Taxi & Limousine Commission (TLC) dataset. The system integrates automated batch ELT ingestion into Snowflake using Apache Airflow and dbt with an event-driven real-time streaming pipeline powered by FastAPI, Apache Kafka (KRaft), Apache Spark Structured Streaming, Redis, and Streamlit.
 
-A production-ready **ELT data pipeline** for NYC Yellow Taxi trip data, featuring automated batch data ingestion from AWS S3, **real-time streaming with fraud detection**, transformation with dbt, and analytics-ready data marts in Snowflake.
+---
 
-## 📋 Table of Contents
+## Architecture Overview
 
-- [🎯 Overview](#-overview)
-- [🏗️ Architecture](#️-architecture)
-- [📁 Project Structure](#-project-structure)
-- [📊 Data Models](#-data-models)
-- [📡 Real-Time Streaming](#-real-time-streaming)
-- [🚀 Setup & Installation](#-setup--installation)
-- [💻 Usage](#-usage)
-- [✅ Data Quality](#-data-quality)
-- [🤝 Contributing](#-contributing)
+The platform is designed around two complementary data pipelines:
 
-## 🎯 Overview
+1. **Batch ELT Pipeline:** Ingests monthly high-volume Parquet archives from NYC TLC via AWS Lambda into AWS S3, stages data in Snowflake, and executes a multi-layer dbt medallion transformation model orchestrated by Apache Airflow.
+2. **Real-Time Streaming Pipeline:** Ingests live ride event telemetry via a FastAPI webhook, streams events through Apache Kafka, executes fraud detection and anomaly scoring in Apache Spark Structured Streaming, persists aggregations in Redis, and serves a live analytical monitoring dashboard.
 
-This project implements a complete **batch + real-time** data pipeline that:
+```
+===================================================================================
+                                BATCH ELT PIPELINE
+===================================================================================
++------------------+       +---------------+       +------------------------------+
+|  NYC TLC Public  | ----> |    AWS S3     | ----> |     Snowflake Data Cloud     |
+|   Data Sources   |       |  Raw Storage  |       |   (Staging Tables & Views)   |
++------------------+       +---------------+       +--------------+---------------+
+                                                                  |
+                         +--------------------+                   |
+                         |   Apache Airflow   | <-----------------+
+                         |   (Orchestrator)   |
+                         +---------+----------+
+                                   |
+                                   v
+                         +--------------------+
+                         |   dbt Core Model   |
+                         |  - Staging Layer   |
+                         |  - Dimensional Mart|
+                         |  - 11 Insight Marts|
+                         |  - One Big Table   |
+                         +--------------------+
 
-- **Extracts** NYC Yellow Taxi trip data from the TLC public dataset
-- **Loads** raw Parquet files into Snowflake via AWS S3
-- **Transforms** data using dbt with a medallion architecture (staging → intermediate → marts)
-- **Streams** real-time trip data through Kafka with Spark Streaming
-- **Detects** fraudulent trips in real-time using custom rules
-- **Orchestrates** batch workflows with Apache Airflow
-- **Delivers** analytics-ready datasets for business intelligence
-
-## 🔁 Recent updates (Nov 2025)
-
-- Dashboard renamed to **TaxiPulse** — a single-file Streamlit app for real-time monitoring.
-- Replaced blocking sleep + rerun loops with `streamlit-autorefresh` for near real-time updates. Use the Sidebar toggle `Realtime (live updates)` to enable a 250ms polling interval for a near-instant experience.
-- Improved maps and visuals:
-  - New PyDeck animated `TripsLayer` for moving route visualizations; start/end markers added.
-  - Maps use a clearer red palette for pickup/dropoffs and show line widths scaled by estimated route volume.
-  - Added borough labels for geographic context and a small "Top Estimated Routes" table.
-- Fraud Monitor & Live Analytics pages updated: new charts, updated color palette (Reds), and removed deprecated Streamlit parameters.
-- Admin & operational tools added:
-  - Dashboard: small admin control to clear Redis data (`FLUSHALL`).
-  - Scripts: `streaming/scripts/stop_local_simulators.sh` to kill host-level simulator processes.
-  - Docker: `kafka-ui` host port changed to `8085` to avoid conflicts; dashboard container now has `restart: unless-stopped` for better resilience.
-- Redis improvements:
-  - Added `get_hourly_matrix(days=...)` helper in `streaming/dashboard/utils/redis_client.py` that aggregates trips by day-of-week and hour-of-day for Rush Hours heatmaps.
-- Requirements:
-  - Dashboard now includes `pydeck==0.9.0`, `numpy`, and `streamlit-autorefresh==0.1.6` in `streaming/dashboard/requirements.txt`.
-
-These updates deliver a smoother near-realtime dashboard experience, clearer map visuals, and operational tools for managing local simulators and Redis storage.
-
-### Key Features
-
-✅ Incremental data loading with sync state management  
-✅ **Real-time streaming pipeline with Apache Kafka & Spark**  
-✅ **Fraud detection system with 15+ detection rules**  
-✅ **Live dashboard with Streamlit for real-time monitoring**  
-✅ Data quality tests and validation  
-✅ One Big Table (OBT) for simplified analytics  
-✅ 11 pre-built business insights ready for visualization  
-✅ Infrastructure as Code with AWS Lambda  
-
-## 🏗️ Architecture
-
-### Batch Pipeline
-
-```mermaid
-flowchart LR
-    A[🌐 NYC TLC\nOpen Data] --> B[☁️ AWS S3\nRaw Storage]
-    B --> C[❄️ Snowflake\nData Cloud]
-    C --> D[🔄 dbt\nTransforms]
-    C --> E[⏰ Airflow\nOrchestration]
-    D <--> E
-    D --> F[📥 Staging]
-    F --> G[🔧 Intermediate]
-    G --> H[📊 Marts]
+===================================================================================
+                            REAL-TIME STREAMING PIPELINE
+===================================================================================
++------------------+       +---------------+       +------------------------------+
+|   Trip Telemetry | ----> |    FastAPI    | ----> |         Apache Kafka         |
+|    Simulator     |       |    Webhook    |       |         (KRaft Mode)         |
++------------------+       +---------------+       +--------------+---------------+
+                                                                  |
+                                                                  v
++------------------+       +---------------+       +------------------------------+
+|  Streamlit UI    | <---- |     Redis     | <---- |         Apache Spark         |
+|   (TaxiPulse)    |       | In-Memory DB  |       |     Structured Streaming     |
+|                  |       | (Alerts & KPIs|       |  (15+ Fraud Scoring Rules)   |
++------------------+       +---------------+       +------------------------------+
 ```
 
-### Real-Time Streaming Pipeline
+---
 
-```mermaid
-flowchart LR
-    A[🚕 Taxi App] --> B[⚡ FastAPI\nWebhook]
-    B --> C[📨 Kafka\nBroker]
-    C --> D[🔥 Spark\nStreaming]
-    D --> E[💾 Redis\nCache]
-    E --> F[📈 Streamlit\nDashboard]
+## Technical Specifications
+
+| Subsystem | Technology | Function |
+|---|---|---|
+| Cloud Storage | Amazon Web Services (S3, Lambda) | Raw storage and serverless ingestion automation |
+| Data Warehouse | Snowflake Data Cloud | Cloud analytical warehousing and columnar compute |
+| Orchestration | Apache Airflow 2.x | Directed Acyclic Graph (DAG) scheduling and monitoring |
+| Data Modeling | dbt Core (Snowflake Adapter) | Medallion modeling (Staging, Intermediate, Marts) |
+| Message Broker | Apache Kafka (KRaft mode) | Distributed event log with zero ZooKeeper dependency |
+| Stream Engine | Apache Spark 3.x (PySpark) | Low-latency stateful streaming and fraud evaluation |
+| In-Memory Cache | Redis 7.x | Sub-millisecond metrics store and sliding window alerts |
+| Ingestion API | FastAPI + Uvicorn | Schema-validated HTTP webhook for trip event ingestion |
+| Monitoring UI | Streamlit + PyDeck | Real-time geospatial mapping and operational dashboards |
+| Containerization | Docker & Docker Compose | Multi-container reproducible deployment |
+
+---
+
+## Batch Pipeline Architecture (ELT)
+
+### Ingestion and Orchestration
+
+Batch workflows are automated via three Apache Airflow DAGs located in `airflow/dags/`:
+
+1. **`deploy_infrastructure_dag.py`**: Verifies and deploys AWS Lambda extraction functions responsible for querying upstream TLC endpoints and transferring Parquet files to AWS S3.
+2. **`nyc_taxi_sync_dag.py`**: Manages state-aware ingestion from S3 into Snowflake staging tables, maintaining watermark records to avoid duplicate data transfer.
+3. **`dbt_transformation_dag.py`**: Triggers dependent dbt transformations and asserts data contract integrity via automated test suites.
+
+### dbt Medallion Data Modeling
+
+The analytical schema in Snowflake is structured into distinct medallion tiers:
+
+```
+nyc_taxi_dbt/models/
+├── staging/
+│   ├── _sources.yml            # Source definitions and freshness constraints
+│   ├── schema.yml              # Column assertions and schema tests
+│   ├── stg_trips.sql           # Raw trip event normalization and casting
+│   └── stg_zones.sql           # Taxi zone taxonomy lookup
+├── intermediate/
+│   └── int_trips_enhanced.sql  # Trip duration, speed, and fare feature generation
+└── marts/
+    ├── core/
+    │   ├── dim_date.sql         # Temporal dimension with calendar attributes
+    │   ├── dim_payment_types.sql# Normalized payment method dimension
+    │   ├── dim_rate_codes.sql   # TLC rate code lookup dimension
+    │   ├── dim_vendors.sql      # Fleet vendor dimension
+    │   ├── dim_zones.sql        # Geographic borough and zone boundaries
+    │   ├── fct_trips.sql        # Fact table keyed on dimensional surrogate keys
+    │   └── obt_trips.sql        # One Big Table (OBT) denormalized for OLAP
+    └── insights/
+        ├── insight_airport_lifeline.sql   # Airport corridor traffic analysis
+        ├── insight_anomaly_breakdown.sql  # Systematic operational outlier aggregation
+        ├── insight_covid_recovery.sql     # Pre- and post-pandemic volume comparisons
+        ├── insight_fee_impact.sql         # Impact of surcharge and congestion pricing
+        ├── insight_industry_evolution.sql # Multi-year fleet performance trajectories
+        ├── insight_manhattan_share.sql    # Intra-borough vs. peripheral travel trends
+        ├── insight_payment_shift.sql      # Cash-to-card adoption metrics over time
+        ├── insight_route_pricing.sql      # Per-mile revenue across popular corridors
+        ├── insight_tipping_patterns.sql   # Spatial and temporal tip behavior
+        ├── insight_uber_effect.sql        # Ride-share market competition trends
+        └── insight_zone_heatmap.sql       # High-density origin-destination routing
 ```
 
-## 📁 Project Structure
+### Data Quality Framework
 
-| Directory | Description |
-|-----------|-------------|
-| **📂 airflow/** | Apache Airflow DAGs and orchestration scripts |
-| ↳ `dags/` | Pipeline DAGs (`deploy_infrastructure_dag.py`, `nyc_taxi_sync_dag.py`) |
-| ↳ `scripts/` | Helper scripts (`sync_manager.py`) |
-| **📂 infrastructure/** | AWS Lambda deployment code |
-| ↳ `deploy_lambda.py` | Lambda deployment script |
-| ↳ `lambda_function.py` | S3 → Snowflake ingestion function |
-| **📂 nyc_taxi_dbt/** | dbt transformation project |
-| ↳ `models/staging/` | `stg_trips.sql`, `stg_zones.sql` |
-| ↳ `models/intermediate/` | `int_trips_validated.sql` |
-| ↳ `models/marts/core/` | `obt_trips.sql`, `dim_zones.sql`, `dim_payment_types.sql`, `dim_rate_codes.sql` |
-| ↳ `models/marts/aggregations/` | `agg_monthly.sql`, `agg_quarterly.sql`, `agg_yearly.sql` |
-| ↳ `models/marts/insights/` | 11 insight models (see Data Models section) |
-| ↳ `tests/` | Data quality tests (4 custom assertions) |
-| **📂 streaming/** | Real-time streaming pipeline |
-| ↳ `docker/` | Docker Compose for Kafka, Zookeeper, Redis |
-| ↳ `api/` | FastAPI webhook server |
-| ↳ `spark/` | Spark Streaming fraud detector |
-| ↳ `dashboard/` | Streamlit live monitoring dashboard |
-| ↳ `simulator/` | Trip data simulator for testing |
-| **📂 scripts/** | Utility scripts (`download_zone_lookup.py`) |
-| **📂 snowflake/** | Database setup SQL (`setup.sql`) |
+Automated validation is enforced through singular and generic dbt tests:
 
-## 📊 Data Models
+- **`assert_valid_trip_duration.sql`**: Validates trip duration is strictly greater than 0 seconds and within physical operating bounds.
+- **`assert_valid_speed.sql`**: Enforces average calculated speed cannot exceed physically plausible vehicle limits.
+- **`assert_positive_fares.sql`**: Verifies core fare and metered revenue fields contain non-negative amounts.
+- **`assert_pickup_before_dropoff.sql`**: Asserts temporal chronological sequence between pickup and dropoff timestamps.
 
-### Snowflake Database Structure
+---
 
-| Schema | Type | Tables/Views |
-|--------|------|--------------|
-| **RAW** | Tables | `TRIPS`, `TAXI_ZONES` |
-| **BRONZE** | Views | `stg_trips`, `stg_zones` |
-| **SILVER** | Views | `int_trips_validated` |
-| **GOLD** | Tables | `dim_zones`, `dim_payment_types`, `dim_rate_codes`, `obt_trips`, `agg_monthly`, `agg_quarterly`, `agg_yearly` |
-| **INSIGHTS** | Tables | `insight_uber_effect`, `insight_covid_recovery`, `insight_airport_lifeline`, `insight_payment_shift`, `insight_manhattan_share`, `insight_tipping_patterns`, `insight_route_pricing`, `insight_fee_impact`, `insight_zone_heatmap`, `insight_anomaly_breakdown`, `insight_industry_evolution` |
+## Real-Time Streaming Pipeline
 
-### Staging Layer (Views)
-| Model | Description |
-|-------|-------------|
-| \`stg_trips\` | Cleaned raw trip records with standardized column names |
-| \`stg_zones\` | NYC taxi zone reference data |
+### Event Flow and Ingestion
 
-### Intermediate Layer (Views)
-| Model | Description |
-|-------|-------------|
-| \`int_trips_validated\` | Trips with data quality validation and filtering |
+1. **Telemetry Simulation (`streaming/simulator/`)**: Reads historical Parquet partitions and streams realistic, timestamp-adjusted trip events to the ingestion endpoint.
+2. **FastAPI Ingestion Gateway (`streaming/api/`)**: Validates inbound JSON payloads against Pydantic schemas (`schemas.py`) and publishes events directly to the Kafka topic `nyc.taxi.trips.raw`.
 
-### Marts Layer (Tables)
+### Spark Streaming Fraud Detection Engine
 
-#### Dimensions
-| Model | Description |
-|-------|-------------|
-| \`dim_zones\` | Pickup/dropoff location attributes |
-| \`dim_payment_types\` | Payment method lookup |
-| \`dim_rate_codes\` | Rate code descriptions |
+The Spark engine (`streaming/spark/fraud_detector.py`) consumes raw telemetry from Kafka in micro-batches and runs a vectorized User-Defined Function (UDF) evaluating 15+ composite fraud and anomaly conditions:
 
-#### One Big Table
-| Model | Description |
-|-------|-------------|
-| \`obt_trips\` | Denormalized table with all trip data for easy analytics |
+| Detection Rule | Trigger Condition | Severity Score |
+|---|---|---|
+| `impossible_speed` | Average calculated speed > 100 mph | +30 |
+| `stationary_trip` | Average speed < 2 mph for duration > 10 min | +25 |
+| `same_location_high_fare` | Pickup zone equals dropoff zone with fare > $5.00 | +25 |
+| `tip_exceeds_fare` | Tip amount strictly exceeds base fare | +25 |
+| `zero_distance_with_fare` | Metered distance equals 0 with positive fare | +20 |
+| `fake_airport_fee` | Airport surcharge applied outside JFK (132) or LGA (138) | +20 |
+| `fake_jfk_rate` | Flat JFK rate code applied without touching zone 132 | +20 |
+| `fare_too_high` | Calculated fare per mile > $10.50 / mile | +20 |
+| `voided_trip` | Trip marked with voided or disputed payment status | +20 |
+| `excessive_tip` | Credit card tip percentage > 50% of base fare | +15 |
+| `too_many_passengers` | Passenger count exceeds vehicle maximum (> 6) | +15 |
+| `negative_fare` | Total fare amount recorded below zero | +15 |
+| `night_cash_trip` | Unmetered cash payment during late night hours | +10 |
+| `night_high_tip` | Night trip tip percentage > 30% | +10 |
+| `zero_passengers` | Zero passenger count recorded on active metered trip | +10 |
 
-#### Aggregations
-| Model | Description |
-|-------|-------------|
-| \`agg_monthly\` | Monthly KPIs: trips, revenue, avg fare, tips |
-| \`agg_quarterly\` | Quarterly performance metrics |
-| \`agg_yearly\` | Yearly trends and YoY comparisons |
+Events with an aggregate score greater than or equal to **50** are flagged as high-risk anomalies, categorized with specific flag tags, and dispatched to Redis for real-time triage.
 
-### Insights Layer (Tables - Ready for Visualization)
-| Model | Description |
-|-------|-------------|
-| \`insight_uber_effect\` | Impact of rideshare competition |
-| \`insight_covid_recovery\` | COVID-19 impact and recovery analysis |
-| \`insight_airport_lifeline\` | Airport trip importance analysis |
-| \`insight_payment_shift\` | Cash to card payment transition |
-| \`insight_manhattan_share\` | Manhattan vs outer borough trends |
-| \`insight_tipping_patterns\` | Tipping behavior analysis |
-| \`insight_route_pricing\` | Popular route pricing patterns |
-| \`insight_fee_impact\` | Congestion surcharge and fee analysis |
-| \`insight_zone_heatmap\` | Pickup/dropoff zone activity |
-| \`insight_anomaly_breakdown\` | Data quality anomaly detection |
-| \`insight_industry_evolution\` | Long-term industry trends (2009-present) |
+### In-Memory Storage & TaxiPulse Dashboard
 
-## 📡 Real-Time Streaming
+- **Redis**: Maintains rolling 7-day sorted sets for zone-level and route-level fraud rankings, time-series metrics counters, and historical incident lists.
+- **TaxiPulse Monitoring UI (`streaming/dashboard/`)**: Built on Streamlit, providing sub-second autorefresh, geospatial trip paths rendered with PyDeck `TripsLayer`, real-time incident queues, and hourly rush-hour heatmaps.
 
-The streaming module provides real-time taxi trip processing with fraud detection.
+---
 
-### Components
-- **FastAPI Server**: Webhook receiver for incoming trips
-- **Apache Kafka**: Message broker for trip events
-- **Spark Streaming**: Real-time fraud detection engine
-- **Redis**: Metrics caching layer
-- **Streamlit Dashboard**: Live monitoring UI
+## Project Structure
 
-### Fraud Detection Rules
-The system detects fraud using 15+ rules including:
-- Impossible speed (> 100 mph)
-- Zero distance with fare
-- Tip exceeds fare amount
-- Fake airport fees
-- Night cash trip patterns
-- And more...
-
-### Quick Start
-```bash
-# Start infrastructure
-cd streaming/docker && docker-compose up -d
-
-# Start API server
-cd streaming/api && uvicorn main:app --port 8000
-
-# Start Spark fraud detector
-cd streaming/spark && spark-submit fraud_detector.py
-
-# Start dashboard
-cd streaming/dashboard && streamlit run app.py
+```
+nyc-taxi-data-pipeline/
+├── airflow/
+│   └── dags/
+│       ├── dbt_transformation_dag.py
+│       ├── deploy_infrastructure_dag.py
+│       ├── nyc_taxi_sync_dag.py
+│       └── scripts/
+├── infrastructure/
+│   ├── deploy_lambda.py
+│   └── lambda_function.py
+├── nyc_taxi_dbt/
+│   ├── dbt_project.yml
+│   ├── packages.yml
+│   ├── macros/
+│   ├── models/
+│   │   ├── staging/
+│   │   ├── intermediate/
+│   │   └── marts/
+│   └── tests/
+├── scripts/
+│   └── download_zone_lookup.py
+├── snowflake/
+│   └── setup.sql
+└── streaming/
+    ├── api/                    # FastAPI Kafka producer service
+    ├── dashboard/              # Streamlit TaxiPulse application
+    ├── docker/                 # Docker Compose orchestrating Kafka, Spark, Redis
+    ├── scripts/                # Operational and process management utilities
+    ├── simulator/              # Trip event generator from Parquet data
+    └── spark/                  # PySpark Structured Streaming fraud detection
 ```
 
-See [streaming/README.md](streaming/README.md) for detailed documentation.
+---
 
-## 🧰 Developer & Admin Tips
-
-- Stop local, host-level simulators (if started outside Docker):
-
-```bash
-chmod +x ./streaming/scripts/stop_local_simulators.sh
-./streaming/scripts/stop_local_simulators.sh
-```
-
-- Clear all Redis session data from the host: `docker exec redis redis-cli FLUSHALL` (or use the "Clear Redis Data (FLUSH)" admin button in the TaxiPulse sidebar)
-- Dashboard: enable `Realtime (live updates)` in the sidebar for near-real-time polling (250ms). For animated routes in Maps, enable **Animated Trip Routes (PyDeck)** in the Maps page.
-- Kafka UI host port changed to 8085 to avoid local conflicts. Access: http://localhost:8085
-
-## 🚀 Setup & Installation
+## Setup and Deployment
 
 ### Prerequisites
 
+- Docker and Docker Compose (v2.x+)
 - Python 3.9+
-- Snowflake account
-- AWS account (for S3 storage)
-- Apache Airflow 2.0+
-- Docker (for streaming)
+- Apache Airflow 2.x
+- Snowflake account with account administration privileges
+- AWS CLI configured with S3 and Lambda permissions
 
-### 1. Clone the Repository
+### 1. Database Initialization
 
-```bash
-git clone https://github.com/abdulrahman532/nyc-taxi-data-pipeline.git
-cd nyc-taxi-data-pipeline
-```
-
-### 2. Set Up Python Environment
+Execute the SQL initialization script against your Snowflake instance:
 
 ```bash
-python -m venv dbt_venv
-source dbt_venv/bin/activate
-pip install dbt-snowflake apache-airflow boto3
+snowsql -f snowflake/setup.sql
 ```
 
-### 3. Configure Snowflake
+This creates the required databases, warehouses, schemas, and external stages.
 
-Run the setup script in Snowflake:
+### 2. Configure Environment Variables
 
-```sql
--- Execute snowflake/setup.sql in Snowflake Worksheets
+Create `.env` configurations for dbt and Snowflake access:
+
+```bash
+export SNOWFLAKE_ACCOUNT="your_account"
+export SNOWFLAKE_USER="your_user"
+export SNOWFLAKE_PASSWORD="your_password"
+export SNOWFLAKE_ROLE="ACCOUNTADMIN"
+export SNOWFLAKE_DATABASE="NYC_TAXI"
+export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
 ```
 
-### 4. Configure dbt Profile
-
-Create \`~/.dbt/profiles.yml\`:
-
-```yaml
-nyc_taxi:
-  target: dev
-  outputs:
-    dev:
-      type: snowflake
-      account: <your_account>
-      user: <your_user>
-      password: <your_password>
-      role: DATA_ENGINEER
-      database: NYC_TAXI_DB
-      warehouse: TAXI_WH
-      schema: RAW
-      threads: 4
-```
-
-### 5. Install dbt Packages
+Verify dbt connectivity:
 
 ```bash
 cd nyc_taxi_dbt
 dbt deps
-```
-
-## 💻 Usage
-
-### Run dbt Models
-
-```bash
-cd nyc_taxi_dbt
-
-# Run all models
+dbt debug
 dbt run
-
-# Run specific layer
-dbt run --select staging
-dbt run --select intermediate
-dbt run --select marts
-
-# Run only insights
-dbt run --select insights
-
-# Run with tests
-dbt build
-```
-
-### Run Data Tests
-
-```bash
 dbt test
 ```
 
-### Generate Documentation
+### 3. Start Streaming Infrastructure
+
+Launch the full streaming stack via Docker Compose:
 
 ```bash
-dbt docs generate
-dbt docs serve
+cd streaming/docker
+docker compose up -d
 ```
 
-### Trigger Airflow DAGs
+This provisions:
+- Kafka broker running in KRaft mode (`localhost:9092`)
+- Kafka UI interface (`http://localhost:8085`)
+- Redis in-memory cache (`localhost:6379`)
+- Spark Master and Worker instances (`http://localhost:8080`)
+- FastAPI Ingestion Webhook (`http://localhost:8000`)
+- TaxiPulse Dashboard (`http://localhost:8501`)
+
+### 4. Run Telemetry Simulation
+
+Generate live streaming trip events from historical Parquet files:
 
 ```bash
-# Via Airflow CLI
-airflow dags trigger nyc_taxi_sync_dag
-
-# Or use the Airflow Web UI
+cd streaming/simulator
+pip install -r requirements.txt
+python stream_from_parquet.py --rate 10
 ```
 
-## ✅ Data Quality
+Access the TaxiPulse dashboard at `http://localhost:8501` to view live trip paths and real-time fraud detections.
 
-The pipeline includes comprehensive data quality checks:
+---
 
-### Schema Tests
-- Not null constraints
-- Unique keys validation
-- Accepted values checks
+## License
 
-### Custom Tests
-| Test | Description |
-|------|-------------|
-| \`assert_pickup_before_dropoff\` | Validates pickup time < dropoff time |
-| \`assert_positive_fares\` | Ensures fares are positive |
-| \`assert_valid_speed\` | Checks for reasonable trip speeds |
-| \`assert_valid_trip_duration\` | Validates trip duration range |
-
-## 📈 Sample Queries
-
-### Monthly Revenue Trend
-```sql
-SELECT * FROM NYC_TAXI_DB.MARTS.AGG_MONTHLY
-ORDER BY year, month;
-```
-
-### COVID Recovery Analysis
-
-```sql
-SELECT * FROM NYC_TAXI_DB.MARTS.INSIGHT_COVID_RECOVERY
-ORDER BY year, month;
-```
-
-### Top Pickup Locations
-```sql
-SELECT 
-    pickup_zone,
-    pickup_borough,
-    COUNT(*) as trip_count,
-    SUM(total_amount) as total_revenue
-FROM NYC_TAXI_DB.MARTS.OBT_TRIPS
-GROUP BY 1, 2
-ORDER BY trip_count DESC
-LIMIT 10;
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (\`git checkout -b feature/amazing-feature\`)
-3. Commit your changes (\`git commit -m 'Add amazing feature'\`)
-4. Push to the branch (\`git push origin feature/amazing-feature\`)
-5. Open a Pull Request
-
-## 📄 License
-
-## 🙏 Acknowledgments
-
-- [NYC Taxi & Limousine Commission](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page) for the open dataset
-- [dbt Labs](https://www.getdbt.com/) for the amazing transformation framework
-- [Snowflake](https://www.snowflake.com/) for the cloud data platform
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for full details.
