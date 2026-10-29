@@ -1,46 +1,60 @@
-# 🚀 دليل التشغيل السريع - NYC Taxi Streaming Pipeline
+# Quick Start Guide: NYC Taxi Streaming Pipeline
 
-> هذا الملف لزميلتك أو أي شخص يريد تشغيل المشروع للمرة الأولى
+A five-minute operational guide for launching and verifying the real-time streaming pipeline.
 
 ---
 
-## ⚡ خطوات التشغيل (5 دقائق)
+## Prerequisites
 
-### الخطوة 1: Clone المشروع
+- Docker Engine 24.x+ and Docker Compose v2.x+
+- Minimum 8 GB available system memory
+- Available host ports: `6379`, `7077`, `8000`, `8080`, `8081`, `8082`, `8085`, `8501`, `9092`
+
+---
+
+## 1. Clone and Navigate
+
 ```bash
 git clone https://github.com/abdulrahman532/nyc-taxi-data-pipeline.git
 cd nyc-taxi-data-pipeline/streaming/docker
 ```
 
-### الخطوة 2: بناء وتشغيل Docker
+---
+
+## 2. Build and Launch Infrastructure
+
+Build container images and start all multi-container services in detached mode:
+
 ```bash
-# بناء الـ images (مهم جداً - لا تتخطى هذه الخطوة!)
 docker compose build
-
-# تشغيل جميع الخدمات
 docker compose up -d
+```
 
-# التحقق من الحالة
+Verify service status:
+
+```bash
 docker compose ps
 ```
 
-### الخطوة 3: انتظار البدء
-```bash
-# انتظر حوالي 60-90 ثانية
-# يمكنك مراقبة التقدم:
-docker compose logs -f
-```
+All services (`kafka`, `spark-master`, `spark-worker`, `spark-job`, `redis`, `fastapi`, `dashboard`, `kafka-ui`) should report healthy or running status.
 
-### الخطوة 4: الوصول للتطبيقات
+---
 
-| التطبيق | الرابط | الوصف |
-|---------|--------|-------|
-| 📊 Dashboard | http://localhost:8501 | لوحة التحكم الرئيسية |
-| 📖 API Docs | http://localhost:8000/docs | توثيق الـ API |
-| 📈 Kafka UI | http://localhost:8085 | واجهة إدارة Kafka |
-| ⚡ Spark UI | http://localhost:8081 | واجهة Spark |
+## 3. Service Endpoints
 
-### الخطوة 5: إرسال بيانات تجريبية
+| Service | Address | Description |
+|---|---|---|
+| TaxiPulse Dashboard | `http://localhost:8501` | Real-time Streamlit analytics and fraud monitor |
+| Ingestion API Docs | `http://localhost:8000/docs` | Interactive Swagger documentation for trip ingestion |
+| Kafka UI | `http://localhost:8085` | Topic, partition, and consumer group inspection |
+| Spark Master UI | `http://localhost:8081` | Spark cluster allocation and active streaming job metrics |
+
+---
+
+## 4. Ingest Sample Trip Event
+
+Submit a sample payload via cURL to test ingestion, Kafka publication, Spark processing, and Redis caching:
+
 ```bash
 curl -X POST http://localhost:8000/api/v1/trips \
   -H "Content-Type: application/json" \
@@ -59,90 +73,44 @@ curl -X POST http://localhost:8000/api/v1/trips \
   }'
 ```
 
----
-
-## ❌ حل المشاكل الشائعة
-
-### المشكلة: "Cannot connect to Docker daemon"
-```bash
-sudo systemctl start docker
-```
-
-### المشكلة: "Port already in use"
-```bash
-# اعثر على العملية:
-sudo lsof -i :8000  # (أو أي منفذ آخر)
-
-# أوقف العملية:
-sudo kill -9 <PID>
-```
-
-### المشكلة: Dashboard لا يعرض بيانات
-```bash
-# امسح البيانات القديمة:
-docker exec redis redis-cli FLUSHALL
-
-# أو من Dashboard نفسه، اضغط على زر "Clear Redis Data"
-```
-
-### المشكلة: Spark job يفشل
-```bash
-# تحقق من الـ logs:
-docker compose logs spark-job
-
-# أعد تشغيل الخدمة:
-docker compose restart spark-job
-```
-
-### المشكلة: Build يفشل
-```bash
-# أعد البناء بدون cache:
-docker compose build --no-cache
-```
+Expected response status: `201 Created` with a unique `trip_id`.
 
 ---
 
-## 🔧 الأوامر المفيدة
+## 5. Troubleshooting & Operations
+
+### Check Service Logs
 
 ```bash
-# مشاهدة logs لكل الخدمات
+# Stream logs across all services
 docker compose logs -f
 
-# مشاهدة logs لخدمة معينة
+# Inspect Spark streaming job output
 docker compose logs -f spark-job
-
-# إيقاف جميع الخدمات
-docker compose down
-
-# إيقاف وحذف البيانات
-docker compose down -v
-
-# إعادة تشغيل خدمة
-docker compose restart <service-name>
-
-# فحص صحة الـ API
-curl http://localhost:8000/health
-
-# فحص Redis
-docker exec redis redis-cli ping
 ```
 
----
+### Port Conflicts
 
-## 📋 المتطلبات
+Identify processes occupying required ports:
 
-- Docker Desktop أو Docker Engine + Docker Compose
-- 8GB RAM كحد أدنى
-- المنافذ التالية متاحة: 6379, 7077, 8000, 8081, 8082, 8085, 8501, 9092
+```bash
+sudo lsof -i -P -n | grep LISTEN | grep -E '(9092|8000|8501|6379|8085)'
+```
 
----
+### Flush Cache State
 
-## 📚 للمزيد من التفاصيل
+To reset Redis metrics and fraud alerts during local testing:
 
-- [README الكامل](./README.md) - التوثيق الشامل
-- [دليل الأخطاء](../docs/ERRORS_AND_FIXES.md) - تقرير الأخطاء والإصلاحات
-- [توثيق Kafka KRaft](./docker/KAFKA_KRAFT_DOCUMENTATION.md) - شرح إعدادات Kafka
+```bash
+docker exec redis redis-cli FLUSHALL
+```
 
----
+### Tear Down Infrastructure
 
-*آخر تحديث: 1 ديسمبر 2025*
+```bash
+# Stop containers
+docker compose down
+
+# Stop containers and remove persistent volumes
+docker compose down -v
+```

@@ -1,100 +1,52 @@
-# 📝 Changelog
+# Changelog: NYC Taxi Streaming Pipeline
 
-All notable changes to the NYC Taxi Streaming Pipeline.
+All notable changes to the NYC Taxi Streaming Pipeline are documented in this file.
 
 ---
 
 ## [2.0.0] - November 27, 2025
 
-### 🚀 Major Updates
+### Technology Upgrades
+- Upgraded Apache Kafka to version 4.1.1 running in KRaft consensus mode with zero ZooKeeper dependency.
+- Upgraded Apache Spark to version 4.0.1 built on Scala 2.13 and Java 17.
+- Standardized container runtime images on Python 3.12 slim.
 
-#### Technology Upgrades
-- **Apache Kafka**: Upgraded to **4.1.1** (KRaft mode - no Zookeeper)
-- **Apache Spark**: Upgraded to **4.0.1** (Scala 2.13)
-- **Python**: Using **3.12** slim images
+### Dashboard Architecture
+- Re-architected Streamlit interface into a unified modular application.
+- Added 6 specialized geospatial visualization layers rendered via PyDeck and Plotly:
+  - Trip Route connectivity vectors.
+  - Pickup density bubble hotspots.
+  - Dropoff density bubble hotspots.
+  - Risk-graded fraud routes.
+  - Borough-level revenue distribution.
+  - Zone activity heatmaps.
+- Integrated near real-time sub-second polling via `streamlit-autorefresh`.
 
-#### Dashboard Redesign
-- Complete UI overhaul with 3 pages
-- Removed all tables - **charts only**
-- Added emoji icons to page names
+### Functional Improvements
+- Added `get_metrics()` and `get_zone_stats()` methods to `RedisClient` for efficient range queries.
+- Added precise geospatial centroids for 60+ key NYC taxi zones.
+- Added interactive fraud threshold filtering to the fraud monitor interface.
 
-#### New Maps Page
-- **6 different map types** selectable from sidebar
-- Trip Routes with pickup/dropoff lines
-- Pickup Hotspots (bubble map)
-- Dropoff Hotspots (bubble map)  
-- Fraud Routes (color-coded by risk)
-- Revenue by Zone
-- Zone Activity heatmap
-- Increased map height to **800px**
-
-### ✨ Features Added
-
-- `get_metrics()` method in RedisClient
-- `get_zone_stats()` method for maps data
-- Zone coordinates for 60+ NYC taxi zones
-- Auto-refresh with configurable rate (1-30 seconds)
-- Fraud score filter in Fraud Monitor
-
-### 🐛 Bug Fixes
-
-- Fixed `stream_from_parquet.py` to accept status codes **200 AND 201**
-- Fixed Redis `INCRBYFLOAT` error by proper data handling
-- Fixed Streamlit deprecation warnings for `use_container_width`
-
-### 📚 Documentation
-
-- Comprehensive README with all features documented
-- API reference with endpoints and schemas
-- Fraud detection rules explained
-- Redis data schema documented
-- Troubleshooting guide
-- External user guide for ngrok access
+### Bug Fixes
+- Fixed `stream_from_parquet.py` to accept both 200 and 201 HTTP status codes.
+- Resolved Redis `INCRBYFLOAT` type errors through strict float coercion.
+- Removed deprecated Streamlit arguments in layout containers.
 
 ---
 
 ## [1.5.0] - November 26, 2025
 
-### ✨ Features
-
-- Enhanced fraud detection with 15+ rules
-- Added more Redis aggregations:
-  - Top pickup/dropoff zones
-  - Payment type distribution
-  - Vendor statistics
-  - Distance stats
-  - Passenger count stats
-
-### 🔧 Changes
-
-- Refresh rate changed from 10 seconds to 3 seconds
-- Dashboard now shows more aggregations
+### Features
+- Expanded fraud evaluation engine in PySpark Structured Streaming to 15+ vectorized scoring rules.
+- Added Redis sorted sets for top origin and destination zones, payment type distributions, and vendor statistics.
+- Adjusted telemetry refresh rates to 3-second micro-batch intervals.
 
 ---
 
 ## [1.0.0] - November 2025
 
-### 🎉 Initial Release
-
-- Real-time streaming pipeline with Kafka
-- Spark Structured Streaming for processing
-- Fraud detection system
-- Streamlit dashboard
-- Redis for metrics storage
-- Docker Compose deployment
-- FastAPI for data ingestion
-- ngrok support for external access
-
----
-
-## Version History Summary
-
-| Version | Date | Highlights |
-|---------|------|------------|
-| 2.0.0 | Nov 27, 2025 | Major UI redesign, 6 maps, charts only |
-| 1.5.0 | Nov 26, 2025 | Enhanced aggregations, fraud rules |
-| 1.0.0 | Nov 2025 | Initial release |
-
----
-
-*For detailed documentation, see [README.md](README.md)*
+### Initial Release
+- Event-driven streaming architecture leveraging Apache Kafka, Apache Spark Structured Streaming, Redis, and FastAPI.
+- Real-time rule-based anomaly detection engine.
+- Containerized deployment managed via Docker Compose.
+- Secure external tunneling integration via ngrok.

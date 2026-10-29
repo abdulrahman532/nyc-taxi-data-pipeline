@@ -1,31 +1,61 @@
-# 📤 Send Data to NYC Taxi Pipeline
+# External Client Ingestion Guide: NYC Taxi Streaming Pipeline
 
-This guide is for external users who want to send taxi trip data to the streaming pipeline.
+This guide details how external producers, edge devices, and client applications submit telemetry events to the NYC Taxi real-time streaming pipeline.
 
-## 🔗 API Endpoint
+---
 
-Get the API URL from the pipeline owner. It will look like:
-```
-https://abc123.ngrok-free.dev/api/v1/trips
-```
+## Endpoint Configuration
 
-## 📋 Requirements
+The ingestion gateway exposes an HTTP REST endpoint accessible via local host or external tunneling (e.g., ngrok):
 
-```bash
-pip install requests
-```
+- **Local:** `http://localhost:8000/api/v1/trips`
+- **Tunnel:** `https://<tunnel-subdomain>.ngrok-free.dev/api/v1/trips`
+- **Batch Endpoint:** `https://<tunnel-subdomain>.ngrok-free.dev/api/v1/trips/batch`
 
-## 🚀 Quick Start
+---
 
-### Option 1: Simple Python Script
+## Schema Reference
+
+### Required Fields
+
+| Field | Type | Bounds / Allowed Values | Description |
+|---|---|---|---|
+| `VendorID` | Integer | `1`, `2`, `6`, `7` | TLC fleet vendor identifier |
+| `tpep_pickup_datetime` | String | ISO 8601 format | Trip start timestamp |
+| `tpep_dropoff_datetime` | String | ISO 8601 format | Trip conclusion timestamp |
+| `passenger_count` | Integer | `0` to `9` | Number of vehicle occupants |
+| `trip_distance` | Float | `>= 0.0` | Trip distance in statute miles |
+| `PULocationID` | Integer | `1` to `265` | Pickup taxi zone LocationID |
+| `DOLocationID` | Integer | `1` to `265` | Dropoff taxi zone LocationID |
+| `payment_type` | Integer | `1` to `6` | Payment method code (1: Credit, 2: Cash) |
+| `fare_amount` | Float | Real number | Metered base fare |
+| `total_amount` | Float | Real number | Total transaction charge |
+
+### Optional Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `RatecodeID` | Integer | `1` | Rate calculation code (1: Standard, 2: JFK, etc.) |
+| `tip_amount` | Float | `0.0` | Discretionary gratuity |
+| `extra` | Float | `0.0` | Rush hour and overnight surcharges |
+| `mta_tax` | Float | `0.5` | Standard MTA state tax |
+| `tolls_amount` | Float | `0.0` | Bridge and highway tolls |
+| `improvement_surcharge` | Float | `0.3` | Vehicle improvement surcharge |
+| `congestion_surcharge` | Float | `0.0` | Congestion zone entry fee |
+| `airport_fee` | Float | `0.0` | Airport pickup/dropoff access fee |
+
+---
+
+## Ingestion Methods
+
+### 1. Python Request Example
 
 ```python
 import requests
-from datetime import datetime
 
-API_URL = "https://YOUR-NGROK-URL.ngrok-free.dev/api/v1/trips"
+API_URL = "https://<tunnel-subdomain>.ngrok-free.dev/api/v1/trips"
 
-trip = {
+payload = {
     "VendorID": 1,
     "tpep_pickup_datetime": "2025-11-26T14:30:00",
     "tpep_dropoff_datetime": "2025-11-26T14:45:00",
@@ -35,17 +65,18 @@ trip = {
     "DOLocationID": 236,
     "payment_type": 1,
     "fare_amount": 15.50,
+    "tip_amount": 3.00,
     "total_amount": 20.30
 }
 
-response = requests.post(API_URL, json=trip)
-print(response.json())
+response = requests.post(API_URL, json=payload)
+print(response.status_code, response.json())
 ```
 
-### Option 2: Using curl
+### 2. cURL CLI Example
 
 ```bash
-curl -X POST https://YOUR-NGROK-URL.ngrok-free.dev/api/v1/trips \
+curl -X POST https://<tunnel-subdomain>.ngrok-free.dev/api/v1/trips \
   -H "Content-Type: application/json" \
   -d '{
     "VendorID": 1,
@@ -57,53 +88,29 @@ curl -X POST https://YOUR-NGROK-URL.ngrok-free.dev/api/v1/trips \
     "DOLocationID": 236,
     "payment_type": 1,
     "fare_amount": 15.50,
+    "tip_amount": 3.00,
     "total_amount": 20.30
   }'
 ```
 
-### Option 3: Stream Real NYC Data
+### 3. High-Volume Parquet Replay
+
+To stream historical TLC Parquet datasets through the ingestion pipeline:
 
 ```bash
-# Download the streamer script
 pip install requests pandas pyarrow
 
-# Run it (downloads ~50MB of real taxi data)
-python stream_from_parquet.py --api-url https://YOUR-NGROK-URL.ngrok-free.dev/api/v1/trips
+python stream_from_parquet.py \
+  --api-url "https://<tunnel-subdomain>.ngrok-free.dev/api/v1/trips" \
+  --rate 10 \
+  --count 1000
 ```
 
-## 📝 Trip Schema
+---
 
-### Required Fields
+## Response Payloads
 
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `VendorID` | int | Vendor ID (1, 2, 6, or 7) | `1` |
-| `tpep_pickup_datetime` | string | Pickup time (ISO format) | `"2025-11-26T14:30:00"` |
-| `tpep_dropoff_datetime` | string | Dropoff time (ISO format) | `"2025-11-26T14:45:00"` |
-| `passenger_count` | int | Number of passengers (0-9) | `2` |
-| `trip_distance` | float | Distance in miles | `3.5` |
-| `PULocationID` | int | Pickup zone (1-265) | `142` |
-| `DOLocationID` | int | Dropoff zone (1-265) | `236` |
-| `payment_type` | int | 1=Credit, 2=Cash, 3=No charge, 4=Dispute | `1` |
-| `fare_amount` | float | Base fare in dollars | `15.50` |
-| `total_amount` | float | Total charge in dollars | `20.30` |
-
-### Optional Fields
-
-| Field | Type | Description | Default |
-|-------|------|-------------|---------|
-| `RatecodeID` | int | Rate code (1-6) | `1` |
-| `tip_amount` | float | Tip amount | `0.0` |
-| `extra` | float | Extra charges | `0.0` |
-| `mta_tax` | float | MTA tax | `0.5` |
-| `tolls_amount` | float | Tolls | `0.0` |
-| `improvement_surcharge` | float | Improvement surcharge | `0.3` |
-| `congestion_surcharge` | float | Congestion surcharge | `0.0` |
-| `airport_fee` | float | Airport fee | `0.0` |
-
-## ✅ Response Format
-
-### Success
+### Success Response (`201 Created`)
 
 ```json
 {
@@ -114,7 +121,7 @@ python stream_from_parquet.py --api-url https://YOUR-NGROK-URL.ngrok-free.dev/ap
 }
 ```
 
-### Error
+### Validation Error (`422 Unprocessable Entity`)
 
 ```json
 {
@@ -128,128 +135,26 @@ python stream_from_parquet.py --api-url https://YOUR-NGROK-URL.ngrok-free.dev/ap
 }
 ```
 
-## 🔄 Batch Upload
-
-Send multiple trips at once:
-
-```python
-import requests
-
-API_URL = "https://YOUR-NGROK-URL.ngrok-free.dev/api/v1/trips/batch"
-
-trips = [
-    {
-        "VendorID": 1,
-        "tpep_pickup_datetime": "2025-11-26T14:30:00",
-        "tpep_dropoff_datetime": "2025-11-26T14:45:00",
-        "passenger_count": 2,
-        "trip_distance": 3.5,
-        "PULocationID": 142,
-        "DOLocationID": 236,
-        "payment_type": 1,
-        "fare_amount": 15.50,
-        "total_amount": 20.30
-    },
-    {
-        "VendorID": 2,
-        "tpep_pickup_datetime": "2025-11-26T15:00:00",
-        "tpep_dropoff_datetime": "2025-11-26T15:20:00",
-        "passenger_count": 1,
-        "trip_distance": 5.2,
-        "PULocationID": 100,
-        "DOLocationID": 200,
-        "payment_type": 2,
-        "fare_amount": 22.00,
-        "total_amount": 25.50
-    }
-]
-
-response = requests.post(API_URL, json=trips)
-print(response.json())
-```
-
-## 🎲 Random Trip Generator
-
-```python
-import requests
-import random
-from datetime import datetime, timedelta
-
-API_URL = "https://YOUR-NGROK-URL.ngrok-free.dev/api/v1/trips"
-
-def generate_random_trip():
-    pickup = datetime.now() - timedelta(minutes=random.randint(5, 30))
-    dropoff = pickup + timedelta(minutes=random.randint(5, 45))
-    distance = round(random.uniform(0.5, 15.0), 2)
-    fare = round(distance * random.uniform(2.0, 4.0) + 2.50, 2)
-    
-    return {
-        "VendorID": random.choice([1, 2]),
-        "tpep_pickup_datetime": pickup.isoformat(),
-        "tpep_dropoff_datetime": dropoff.isoformat(),
-        "passenger_count": random.randint(1, 4),
-        "trip_distance": distance,
-        "PULocationID": random.randint(1, 265),
-        "DOLocationID": random.randint(1, 265),
-        "payment_type": random.choice([1, 2]),
-        "fare_amount": fare,
-        "tip_amount": round(fare * random.uniform(0, 0.25), 2),
-        "total_amount": round(fare * 1.15, 2)
-    }
-
-# Send 100 random trips
-for i in range(100):
-    trip = generate_random_trip()
-    response = requests.post(API_URL, json=trip)
-    print(f"Trip {i+1}: {response.json()['status']}")
-```
-
-## 🕵️ Test Fraud Detection
-
-Send a suspicious trip to trigger fraud detection:
-
-```python
-import requests
-from datetime import datetime
-
-API_URL = "https://YOUR-NGROK-URL.ngrok-free.dev/api/v1/trips"
-
-# This trip will be flagged as fraud!
-# Reasons: zero distance, same pickup/dropoff, high fare, tip > fare, night time, cash
-fraud_trip = {
-    "VendorID": 1,
-    "tpep_pickup_datetime": "2025-11-26T02:30:00",  # Night time
-    "tpep_dropoff_datetime": "2025-11-26T02:35:00",
-    "passenger_count": 0,
-    "trip_distance": 0,                             # Zero distance
-    "PULocationID": 142,
-    "DOLocationID": 142,                            # Same location
-    "payment_type": 2,                              # Cash
-    "fare_amount": 500.00,                          # High fare
-    "tip_amount": 600.00,                           # Tip > fare
-    "total_amount": 1100.00
-}
-
-response = requests.post(API_URL, json=fraud_trip)
-print(response.json())
-```
-
-## ❓ Troubleshooting
-
-### Connection Error
-- Check if the ngrok URL is correct
-- Ask the pipeline owner if the server is running
-
-### 422 Validation Error
-- Check your JSON format
-- Ensure all required fields are present
-- Verify field types (int vs float vs string)
-
-### Check API Health
-```bash
-curl https://YOUR-NGROK-URL.ngrok-free.dev/health
-```
-
 ---
 
-**Need help?** Contact the pipeline owner.
+## Anomaly Simulation Test Payload
+
+To verify that the Spark streaming fraud engine actively flags suspicious patterns, transmit an event with synthetic anomaly attributes:
+
+```json
+{
+  "VendorID": 1,
+  "tpep_pickup_datetime": "2025-11-26T02:30:00",
+  "tpep_dropoff_datetime": "2025-11-26T02:35:00",
+  "passenger_count": 0,
+  "trip_distance": 0.0,
+  "PULocationID": 142,
+  "DOLocationID": 142,
+  "payment_type": 2,
+  "fare_amount": 500.00,
+  "tip_amount": 600.00,
+  "total_amount": 1100.00
+}
+```
+
+This event triggers multiple fraud flags (`zero_distance_with_fare`, `same_location_high_fare`, `tip_exceeds_fare`, `zero_passengers`), resulting in a score exceeding the threshold of 50 and routing to the active alert queue in Redis.
